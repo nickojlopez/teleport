@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/gravitational/trace"
 	"golang.org/x/crypto/ssh"
@@ -77,7 +78,8 @@ type puttyRegistrySessionStrings struct {
 
 // addPuTTYSession adds a PuTTY session for the given host/port to the Windows registry
 func addPuTTYSession(proxyHostname string, hostname string, port int, login string, ppkFilePath string, certificateFilePath string, commandToRun string) (bool, error) {
-	registryKey := fmt.Sprintf(`%v\%v`, puttyRegistrySessionsKey, hostname)
+	puttySessionName := fmt.Sprintf(`%v%%20(%v)`, hostname, proxyHostname)
+	registryKey := fmt.Sprintf(`%v\%v`, puttyRegistrySessionsKey, puttySessionName)
 	sessionDwords := puttyRegistrySessionDwords{}
 	sessionStrings := puttyRegistrySessionStrings{}
 
@@ -114,27 +116,53 @@ func addPuTTYSession(proxyHostname string, hostname string, port int, login stri
 	defer pk.Close()
 
 	// write dwords
-	mustWriteDword(pk, "Present", sessionDwords.Present)
-	mustWriteDword(pk, "PortNumber", fmt.Sprintf("%v", sessionDwords.PortNumber))
-	mustWriteDword(pk, "ProxyPort", fmt.Sprintf("%v", sessionDwords.ProxyPort))
-	mustWriteDword(pk, "ProxyMethod", sessionDwords.ProxyMethod)
-	mustWriteDword(pk, "ProxyLogToTerm", sessionDwords.ProxyLogToTerm)
+	if ok, err := registryWriteDword(pk, "Present", sessionDwords.Present); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteDword(pk, "PortNumber", fmt.Sprintf("%v", sessionDwords.PortNumber)); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteDword(pk, "ProxyPort", fmt.Sprintf("%v", sessionDwords.ProxyPort)); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteDword(pk, "ProxyMethod", sessionDwords.ProxyMethod); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteDword(pk, "ProxyLogToTerm", sessionDwords.ProxyLogToTerm); !ok {
+		return false, trace.Wrap(err)
+	}
 
 	// write strings
-	mustWriteString(pk, "Hostname", sessionStrings.Hostname)
-	mustWriteString(pk, "Protocol", sessionStrings.Protocol)
-	mustWriteString(pk, "ProxyHost", sessionStrings.ProxyHost)
-	mustWriteString(pk, "ProxyUsername", sessionStrings.ProxyUsername)
-	mustWriteString(pk, "ProxyTelnetCommand", sessionStrings.ProxyTelnetCommand)
-	mustWriteString(pk, "PublicKeyFile", sessionStrings.PublicKeyFile)
-	mustWriteString(pk, "DetachedCertificate", sessionStrings.DetachedCertificate)
-	mustWriteString(pk, "UserName", sessionStrings.UserName)
+	if ok, err := registryWriteString(pk, "Hostname", sessionStrings.Hostname); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "Protocol", sessionStrings.Protocol); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "ProxyHost", sessionStrings.ProxyHost); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "ProxyUsername", sessionStrings.ProxyUsername); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "ProxyTelnetCommand", sessionStrings.ProxyTelnetCommand); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "PublicKeyFile", sessionStrings.PublicKeyFile); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "DetachedCertificate", sessionStrings.DetachedCertificate); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(pk, "UserName", sessionStrings.UserName); !ok {
+		return false, trace.Wrap(err)
+	}
 
 	return true, nil
 }
 
 // addHostCAPublicKey adds a host CA to the registry with a set of space-separated hostnames
-func addHostCAPublicKey(keyName string, publicKey string, hostnames []string) (bool, error) {
+func addHostCAPublicKey(keyName string, publicKey string, hostnames ...string) (bool, error) {
 	registryKeyName := fmt.Sprintf(`%v\%v`, puttyRegistrySSHHostCAsKey, keyName)
 
 	// get the subkey with the host CA key name
@@ -144,8 +172,12 @@ func addHostCAPublicKey(keyName string, publicKey string, hostnames []string) (b
 	}
 	hostList, _, err := registryKey.GetStringsValue("MatchHosts")
 	if err != nil {
-		log.Debugf("Can't get registry value %v: %T", registryKeyName, err)
-		return false, trace.Wrap(err)
+		// ERROR_FILE_NOT_FOUND is an acceptable error, meaning that the value does not already
+		// exist and it must be created
+		if err != syscall.ERROR_FILE_NOT_FOUND {
+			log.Debugf("Can't get registry value %v: %T", registryKeyName, err)
+			return false, trace.Wrap(err)
+		}
 	} else {
 		// initialise empty hostlist if no value returned
 		if len(hostList) == 0 {
@@ -178,8 +210,12 @@ func addHostCAPublicKey(keyName string, publicKey string, hostnames []string) (b
 	sort.Strings(hostList)
 
 	// write strings to subkey
-	mustWriteStrings(registryKey, "MatchHosts", hostList)
-	mustWriteString(registryKey, "PublicKey", publicKey)
+	if ok, err := registryWriteMultiString(registryKey, "MatchHosts", hostList); !ok {
+		return false, trace.Wrap(err)
+	}
+	if ok, err := registryWriteString(registryKey, "PublicKey", publicKey); !ok {
+		return false, trace.Wrap(err)
+	}
 
 	return true, nil
 }
@@ -218,19 +254,19 @@ func onPuttyConfig(cf *CLIConf) error {
 	}
 
 	// get the public key of the Teleport host CA so we can add it to PuTTY's list of trusted keys
-	var caPublicKey string
+	var hostCAKnownHostsLine string
 	err = tc.WithRootClusterClient(cf.Context, func(clt auth.ClientI) error {
-		caPublicKey, err = client.ExportAuthorities(cf.Context, clt, client.ExportAuthoritiesRequest{AuthType: "host"})
+		hostCAKnownHostsLine, err = client.ExportAuthorities(cf.Context, clt, client.ExportAuthoritiesRequest{AuthType: "host"})
 		if err != nil {
 			return trace.Wrap(err)
 		}
 		return nil
 	})
-	_, _, pubKey, _, _, err := ssh.ParseKnownHosts([]byte(caPublicKey))
+	_, _, hostCAPublicKeyBytes, _, _, err := ssh.ParseKnownHosts([]byte(hostCAKnownHostsLine))
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	publicKey := strings.TrimSuffix(string(ssh.MarshalAuthorizedKey(pubKey)), "\n")
+	hostCAPublicKey := strings.TrimSuffix(string(ssh.MarshalAuthorizedKey(hostCAPublicKeyBytes)), "\n")
 
 	// get root cluster name
 	rootClusterName, rootErr := proxyClient.RootClusterName(cf.Context)
@@ -257,21 +293,20 @@ func onPuttyConfig(cf *CLIConf) error {
 	// format local command string (to run 'tsh proxy ssh')
 	localCommandString := formatLocalCommandString(cf.executablePath, rootClusterName)
 
-	// add proxied session to registry
-	if ok, err := addPuTTYSession(proxyHost, tc.Config.Host, port, login, ppkFilePath, certificateFilePath, localCommandString); !ok {
-		log.Fatalf("Failed to add proxied PuTTY session for %v: %T\n", userHostString, err)
-		return trace.Wrap(err)
-	} else {
-		fmt.Printf("Added PuTTY session for %v [via %v]\n", userHostString, proxyHost)
-	}
-
-	keyTitle := fmt.Sprintf(`teleportHostCA-%v`, proxyHost)
-	hostnameList := []string{hostname}
-	if ok, err := addHostCAPublicKey(keyTitle, publicKey, hostnameList); !ok {
-		log.Fatalf("Failed to add host CA key: %T", err)
+	keyName := fmt.Sprintf(`teleportHostCA-%v`, proxyHost)
+	if ok, err := addHostCAPublicKey(keyName, hostCAPublicKey, hostname); !ok {
+		log.Infof("Failed to add host CA key: %T", err)
 		return trace.Wrap(err)
 	} else {
 		log.Debugf("Added/updated host CA key for %v", hostname)
+	}
+
+	// add session to registry
+	if ok, err := addPuTTYSession(proxyHost, tc.Config.Host, port, login, ppkFilePath, certificateFilePath, localCommandString); !ok {
+		log.Infof("Failed to add PuTTY session for %v: %T\n", userHostString, err)
+		return trace.Wrap(err)
+	} else {
+		fmt.Printf("Added PuTTY session for %v [via %v]\n", userHostString, proxyHost)
 	}
 
 	return nil
