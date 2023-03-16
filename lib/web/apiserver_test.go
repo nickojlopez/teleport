@@ -6611,6 +6611,10 @@ func (mock authProviderMock) GenerateUserSingleUseCerts(ctx context.Context) (au
 	return nil, nil
 }
 
+func (mock authProviderMock) GenerateOpenSSHCert(ctx context.Context, req *authproto.OpenSSHCertRequest) (*authproto.OpenSSHCert, error) {
+	return nil, nil
+}
+
 type terminalOpt func(t *TerminalRequest)
 
 func withSessionID(sid session.ID) terminalOpt {
