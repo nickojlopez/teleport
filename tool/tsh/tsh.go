@@ -227,7 +227,7 @@ type CLIConf struct {
 	Compatibility string
 	// CertificateFormat defines the format of the user SSH certificate.
 	CertificateFormat string
-	// IdentityFileOut is an argument to -out flag
+	// IdentityFileOut is an argument to --out flag
 	IdentityFileOut string
 	// IdentityFormat (used for --format flag for 'tsh login') defines which
 	// format to use with --out to store a freshly retrieved certificate
@@ -723,6 +723,9 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 	lsRecordings.Flag("to-utc", fmt.Sprintf("End of time range in which recordings are listed. Format %s. Defaults to current time.", defaults.TshTctlSessionListTimeFormat)).StringVar(&cf.ToUTC)
 	lsRecordings.Flag("limit", fmt.Sprintf("Maximum number of recordings to show. Default %s.", defaults.TshTctlSessionListLimit)).Default(defaults.TshTctlSessionListLimit).IntVar(&cf.maxRecordingsToShow)
 	lsRecordings.Flag("last", "Duration into the past from which session recordings should be listed. Format 5h30m40s").StringVar(&cf.recordingsSince)
+	exportRecordings := recordings.Command("export", "Export recorded desktop sesions to video.")
+	exportRecordings.Flag("out", "Override output file name").StringVar(&cf.IdentityFileOut)
+	exportRecordings.Arg("session-id", "ID of the session to join").Required().StringVar(&cf.SessionID)
 
 	// Local TLS proxy.
 	proxy := app.Command("proxy", "Run local TLS proxy allowing connecting to Teleport in single-port mode")
@@ -1153,6 +1156,8 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 		err = onApps(&cf)
 	case lsRecordings.FullCommand():
 		err = onRecordings(&cf)
+	case exportRecordings.FullCommand():
+		err = onExportRecording(&cf)
 	case appLogin.FullCommand():
 		err = onAppLogin(&cf)
 	case appLogout.FullCommand():
@@ -4372,6 +4377,7 @@ func onRecordings(cf *CLIConf) error {
 		return trace.Errorf("date range for recordings listing too large: %v days specified: limit %v days",
 			days, defaults.TshTctlSessionDayLimit)
 	}
+	// TODO(zmb3): this would have to show desktop recordings too
 	var sessions []apievents.AuditEvent
 	if err := client.RetryWithRelogin(cf.Context, tc, func() error {
 		sessions, err = tc.SearchSessionEvents(cf.Context,
