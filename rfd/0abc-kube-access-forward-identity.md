@@ -100,7 +100,7 @@ Since the proxy has full access to the HTTP request, it can add the user's ident
 to the request headers before forwarding it to the upstream service.
 
 ```go
-headers["TELEPORT_IMPERSONATE_IDENTITY"] = clientCert.Subject
+headers["TELEPORT_IMPERSONATE_IDENTITY"] = json(clientCert.Subject)
 ```
 
 In order to prevent the user from tampering with the headers, the authorization
@@ -163,11 +163,15 @@ Auth server will return an error to the proxy and the request is rejected.
 
 Since we no longer need to call `ProcessKubeCSR` endpoint, we will need to verify
 that the cluster is licensed to Kubernetes before forwarding the request to the Kube
-Service. This can be done by adding a new endpoint to the Auth server that will
-return the license information. The proxy will call this endpoint periodically and
-if the license doesn't have the Kubernetes feature enabled, the proxy will reject
-the request. This would allow us to automatically fix the error message returned
-to the user when the license is invalid [teleport.e#661](https://github.com/gravitational/teleport.e/issues/661).
+Service. Auth server will forbid agents to register their `KubeServers` during
+heartbeats if Auth isn't licensed to Kubernetes. Users will also receive an error
+when listing Kubernetes clusters using `tsh kube ls` informing them the cluster
+isn't properly licensed for Kubernetes Access. This would allow us to
+automatically fix the error message returned to the user when the license is
+invalid [teleport.e#661](https://github.com/gravitational/teleport.e/issues/661).
+
+This change only affects enterprise users that are using the Kubernetes Access feature
+without a valid license.
 
 ## Security
 
