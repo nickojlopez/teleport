@@ -17,6 +17,7 @@ limitations under the License.
 package ingress
 
 import (
+	"crypto/tls"
 	"net"
 	"net/http"
 
@@ -95,10 +96,24 @@ func HTTPConnStateReporter(service string, r *Reporter) func(net.Conn, http.Conn
 		switch state {
 		case http.StateNew:
 			r.ConnectionAccepted(service, conn)
-			r.ConnectionAuthenticated(service, conn)
+			tlsConn, ok := getTLSConn(conn)
+			if !ok {
+				return
+			}
+			state := tlsConn.ConnectionState()
+			if state.HandshakeComplete {
+				r.ConnectionAuthenticated(service, conn)
+			}
 		case http.StateClosed, http.StateHijacked:
 			r.ConnectionClosed(service, conn)
-			r.AuthenticatedConnectionClosed(service, conn)
+			tlsConn, ok := getTLSConn(conn)
+			if !ok {
+				return
+			}
+			state := tlsConn.ConnectionState()
+			if state.HandshakeComplete {
+				r.AuthenticatedConnectionClosed(service, conn)
+			}
 		}
 	}
 }
@@ -206,6 +221,19 @@ func getRealLocalAddr(conn net.Conn) net.Addr {
 		conn = connGetter.NetConn()
 	}
 	return conn.LocalAddr()
+}
+
+func getTLSConn(conn net.Conn) (*tls.Conn, bool) {
+	for {
+		if tlsConn, ok := conn.(*tls.Conn); ok {
+			return tlsConn, true
+		}
+		connGetter, ok := conn.(netConnGetter)
+		if !ok {
+			return nil, false
+		}
+		conn = connGetter.NetConn()
+	}
 }
 
 type netConnGetter interface {
