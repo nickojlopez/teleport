@@ -192,7 +192,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // HandleConnection handles connections from plain TCP applications.
 func (h *Handler) HandleConnection(ctx context.Context, clientConn net.Conn) error {
-	tlsConn, ok := clientConn.(*tls.Conn)
+	tlsConn, ok := clientConn.(utils.TLSConn)
 	if !ok {
 		return trace.BadParameter("expected *tls.Conn, got: %T", clientConn)
 	}
@@ -364,7 +364,7 @@ func (h *Handler) renewSession(r *http.Request) (*session, error) {
 // `http.Request`.
 func (h *Handler) getAppSession(r *http.Request) (ws types.WebSession, err error) {
 	// We have a client certificate with encoded session id in application
-	// access CLI flow i.e. when users log in using "tsh app login" and
+	// access CLI flow i.e. when users log in using "tsh apps login" and
 	// then connect to the apps with the issued certs.
 	if HasClientCert(r) {
 		ws, err = h.getAppSessionFromCert(r)
