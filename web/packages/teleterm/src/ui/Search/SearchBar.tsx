@@ -95,6 +95,7 @@ export function SearchBar() {
         onChange={e => {
           onInputValueChange(e.target.value);
         }}
+        spellCheck={false}
       />
       {!opened && (
         <Shortcut>{getAccelerator(OPEN_COMMAND_BAR_SHORTCUT_ACTION)}</Shortcut>
