@@ -25,15 +25,14 @@ We have disabled the functionality but would like to reintroduce it in a secure,
 
 ## Scope
 
-This RFD will cover how to implement for web SCP specifically, but may be expanded to SFTP for tsh, although my research has been mostly for web scp. 
-If at anytime there is ambiguity in this RFD for "which type of file transfers does this refer to", default to web scp only. 
+This RFD will cover how to implement an approval process for moderated session file transfer in the web UI. For now, any file transfer request made by `tsh scp` that requires moderator approval will be given an error and directed to the web UI to complete.
 
 ## The current issue
 
 When a user initiates a file transfer request (HTTP request and `tcp scp`), the system establishes a new non-interactive session to run the "exec" command.
 When we attempt to [open the session](https://github.com/gravitational/teleport/blob/64b10f1ccbeeab63c4ce91f5f11fdd74b42448d8/lib/srv/sess.go#L277) we have a check named `checkIfStart` which will pull any policies that require moderation from the current identity, and return if they've been fulfilled or not. 
 This will always fail as this is a "new" session, created just a few lines before the check itself. 
-Therefore, we need a way to let the server know that this request has been moderator approved.
+Therefore, we need a way to let the server know that this request has been approved in a moderated session.
 
 ## Details
 
@@ -41,6 +40,7 @@ The proposed flow would look like this (simplified).
 ```mermaid
 sequenceDiagram
 Requester->>Proxy: Send FileTransferRequest over websocket connection
+Note over Requester,Proxy: This request is to start the approval process<br />Therefore we don't need to worry about timeouts, as it is <br />a state-change request, not the scp request itself.
 Proxy->>SSH Server: send request over ssh channel
 SSH Server->>Approvers: Create, store, and emit FileTransferRequest to participants
 Approvers->>SSH Server: Approve/Deny request
@@ -51,11 +51,11 @@ Requester->>Proxy: http request with sessionID and commandRequestID appended to 
 
 ### The FileTransferRequest 
 
-The general idea of the solution is to provide a way for users to "request-a-request" that can be approved by moderators. 
-When a request is made via the web UI, the ui will determine if the request will require an approval process. 
-Only moderated sessions will require this process. If the launched session is not a moderated session, we can pass a file transfer request as normal. 
+The general idea of the solution is to provide a way for users to "request-a-request" that can be approved in a moderated session. 
+When a file transfer is made via the web UI, the ui will determine if the file transfer will require an approval process. 
+Only moderated sessions will require this process. If the launched session is not a moderated session, we can pass the file transfer http request as normal. 
 The UI currently doesn't have an explicit flag stating if it is in a moderated session or not, so we will have to pass this value back to the UI with the rest of the [SessionMetadata](https://github.com/gravitational/teleport/blob/master/web/packages/teleport/src/services/session/types.ts#L44) on session init.
-Once the approval process is completed, the file transfer will be sent with our new extra parameters. More details [below](#updated-file-transfer-api-handler)
+Once the approval process is completed, the file transfer http request will be sent with our new extra parameters. More details [below](#updated-file-transfer-api-handler)
 
 ```go
 type FileTransferRequest {
@@ -196,6 +196,8 @@ A user will follow the normal file transfer dialog and, if in a moderated sessio
 ![new file transfer dialogs](https://user-images.githubusercontent.com/5201977/227379373-f7afb730-630f-4577-a12a-976279cc7cda.png)
 
 If a request is approved, the user view will continue to look/function the same way as a regular request currently. 
+
+If a request is made via the cli with `tsh scp`, they will be given an error stating this process must be completed in the web UI.
 
 ### Per-session-MFA
 
