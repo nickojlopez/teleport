@@ -1100,7 +1100,7 @@ func (c *AWSSessionCacheKeyBuilder) String() string {
 //   - a role is in a different account than the next role and the next role
 //     does not have an external ID.
 // "superfluous external IDs" are those for a role that is in the same account
-// as the role preceeding it in the chain.
+// as the role preceding it in the chain.
 func checkAndSetAssumeRoles(region string, roles []services.AssumeRole) ([]services.AssumeRole, error) {
 	roles = filterAssumeRoles(roles)
 	if len(roles) == 0 {
