@@ -18,6 +18,7 @@ package mocks
 
 import (
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -34,6 +35,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/gravitational/trace"
+	"github.com/jonboulle/clockwork"
 )
 
 // STSMock mocks AWS STS API.
@@ -321,9 +323,16 @@ func (m *IAMMock) DeleteUserPolicyWithContext(ctx aws.Context, input *iam.Delete
 // RedshiftMock mocks AWS Redshift API.
 type RedshiftMock struct {
 	redshiftiface.RedshiftAPI
-	Clusters []*redshift.Cluster
+	Clusters                    []*redshift.Cluster
+	GetClusterCredentialsOutput *redshift.GetClusterCredentialsOutput
 }
 
+func (m *RedshiftMock) GetClusterCredentialsWithContext(aws.Context, *redshift.GetClusterCredentialsInput, ...request.Option) (*redshift.GetClusterCredentialsOutput, error) {
+	if m.GetClusterCredentialsOutput == nil {
+		return nil, trace.AccessDenied("access denied")
+	}
+	return m.GetClusterCredentialsOutput, nil
+}
 func (m *RedshiftMock) DescribeClustersWithContext(ctx aws.Context, input *redshift.DescribeClustersInput, options ...request.Option) (*redshift.DescribeClustersOutput, error) {
 	if aws.StringValue(input.ClusterIdentifier) == "" {
 		return &redshift.DescribeClustersOutput{
@@ -698,4 +707,16 @@ func instanceEngineMatches(instance *rds.DBInstance, filterSet map[string]struct
 func clusterEngineMatches(cluster *rds.DBCluster, filterSet map[string]struct{}) bool {
 	_, ok := filterSet[aws.StringValue(cluster.Engine)]
 	return ok
+}
+
+// RedshiftGetClusterCredentialsOutput return a sample redshift.GetClusterCredentialsOutput.
+func RedshiftGetClusterCredentialsOutput(user, password string, clock clockwork.Clock) *redshift.GetClusterCredentialsOutput {
+	if clock == nil {
+		clock = clockwork.NewRealClock()
+	}
+	return &redshift.GetClusterCredentialsOutput{
+		DbUser:     aws.String(user),
+		DbPassword: aws.String(password),
+		Expiration: aws.Time(clock.Now().Add(15 * time.Minute)),
+	}
 }

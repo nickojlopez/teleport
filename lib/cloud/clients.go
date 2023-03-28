@@ -18,7 +18,9 @@ package cloud
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	gcpcredentials "cloud.google.com/go/iam/credentials/apiv1"
@@ -30,9 +32,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
-	"github.com/aws/aws-sdk-go/aws/session"
 	awssession "github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
@@ -62,9 +64,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	apiawsutils "github.com/gravitational/teleport/api/utils/aws"
 	libcloudaws "github.com/gravitational/teleport/lib/cloud/aws"
 	"github.com/gravitational/teleport/lib/cloud/azure"
 	"github.com/gravitational/teleport/lib/cloud/gcp"
+	"github.com/gravitational/teleport/lib/services"
+	awsutils "github.com/gravitational/teleport/lib/utils/aws"
 )
 
 // Clients provides interface for obtaining cloud provider clients.
@@ -94,34 +99,30 @@ type GCPClients interface {
 
 // AWSClients is an interface for providing AWS API clients.
 type AWSClients interface {
-	// GetAWSSession returns AWS session for the specified region.
-	GetAWSSession(region string) (*awssession.Session, error)
-	// GetAWSSessionForRole returns AWS session for the specified role ARN.
-	GetAWSSessionForRole(ctx context.Context, region, roleARN string) (*awssession.Session, error)
+	// GetAWSSession returns AWS session for the specified region and any role(s).
+	GetAWSSession(ctx context.Context, region string, roles ...services.AssumeRole) (*awssession.Session, error)
 	// GetAWSRDSClient returns AWS RDS client for the specified region.
-	GetAWSRDSClient(region string) (rdsiface.RDSAPI, error)
+	GetAWSRDSClient(ctx context.Context, region string, roles ...services.AssumeRole) (rdsiface.RDSAPI, error)
 	// GetAWSRedshiftClient returns AWS Redshift client for the specified region.
-	GetAWSRedshiftClient(region string) (redshiftiface.RedshiftAPI, error)
+	GetAWSRedshiftClient(ctx context.Context, region string, roles ...services.AssumeRole) (redshiftiface.RedshiftAPI, error)
 	// GetAWSRedshiftServerlessClient returns AWS Redshift Serverless client for the specified region.
-	GetAWSRedshiftServerlessClient(region string) (redshiftserverlessiface.RedshiftServerlessAPI, error)
-	// GetAWSRedshiftServerlessClientForRole returns AWS Redshift Serverless client for the specified region and role ARN.
-	GetAWSRedshiftServerlessClientForRole(ctx context.Context, region, roleARN string) (redshiftserverlessiface.RedshiftServerlessAPI, error)
+	GetAWSRedshiftServerlessClient(ctx context.Context, region string, roles ...services.AssumeRole) (redshiftserverlessiface.RedshiftServerlessAPI, error)
 	// GetAWSElastiCacheClient returns AWS ElastiCache client for the specified region.
-	GetAWSElastiCacheClient(region string) (elasticacheiface.ElastiCacheAPI, error)
+	GetAWSElastiCacheClient(ctx context.Context, region string, roles ...services.AssumeRole) (elasticacheiface.ElastiCacheAPI, error)
 	// GetAWSMemoryDBClient returns AWS MemoryDB client for the specified region.
-	GetAWSMemoryDBClient(region string) (memorydbiface.MemoryDBAPI, error)
+	GetAWSMemoryDBClient(ctx context.Context, region string, roles ...services.AssumeRole) (memorydbiface.MemoryDBAPI, error)
 	// GetAWSSecretsManagerClient returns AWS Secrets Manager client for the specified region.
-	GetAWSSecretsManagerClient(region string) (secretsmanageriface.SecretsManagerAPI, error)
+	GetAWSSecretsManagerClient(ctx context.Context, region string, roles ...services.AssumeRole) (secretsmanageriface.SecretsManagerAPI, error)
 	// GetAWSIAMClient returns AWS IAM client for the specified region.
-	GetAWSIAMClient(region string) (iamiface.IAMAPI, error)
+	GetAWSIAMClient(ctx context.Context, region string, roles ...services.AssumeRole) (iamiface.IAMAPI, error)
 	// GetAWSSTSClient returns AWS STS client for the specified region.
-	GetAWSSTSClient(region string) (stsiface.STSAPI, error)
+	GetAWSSTSClient(ctx context.Context, region string, roles ...services.AssumeRole) (stsiface.STSAPI, error)
 	// GetAWSEC2Client returns AWS EC2 client for the specified region.
-	GetAWSEC2Client(region string) (ec2iface.EC2API, error)
+	GetAWSEC2Client(ctx context.Context, region string, roles ...services.AssumeRole) (ec2iface.EC2API, error)
 	// GetAWSSSMClient returns AWS SSM client for the specified region.
-	GetAWSSSMClient(region string) (ssmiface.SSMAPI, error)
+	GetAWSSSMClient(ctx context.Context, region string, roles ...services.AssumeRole) (ssmiface.SSMAPI, error)
 	// GetAWSEKSClient returns AWS EKS client for the specified region.
-	GetAWSEKSClient(region string) (eksiface.EKSAPI, error)
+	GetAWSEKSClient(ctx context.Context, region string, roles ...services.AssumeRole) (eksiface.EKSAPI, error)
 }
 
 // AzureClients is an interface for Azure-specific API clients
@@ -182,7 +183,8 @@ func NewClients() Clients {
 var _ Clients = (*cloudClients)(nil)
 
 type cloudClients struct {
-	// awsSessions is a map of cached AWS sessions per region.
+	// awsSessions is a map of cached AWS sessions per region
+	// and assumed role chain.
 	awsSessions map[string]*awssession.Session
 	// gcpIAM is the cached GCP IAM client.
 	gcpIAM *gcpcredentials.IamCredentialsClient
@@ -231,44 +233,55 @@ type azureClients struct {
 	azureRunCommandClients azure.ClientMap[azure.RunCommandClient]
 }
 
-// GetAWSSession returns AWS session for the specified region.
-func (c *cloudClients) GetAWSSession(region string) (*awssession.Session, error) {
-	c.mtx.RLock()
-	if session, ok := c.awsSessions[region]; ok {
-		c.mtx.RUnlock()
+// GetAWSSession retrieves an AWS session for the given region,
+// filters out roles that have an empty role ARN,
+// assumes each non-empty role ARN in order, and returns an AWS session
+// for the chain of assumed roles.
+//
+// If there are no roles to assume, this function returns the default session
+// for the given region.
+//
+// If multiple AssumeRole arguments are passed, then the roles are assumed in order,
+// i.e. [role1 role2] => assume role1 => assume role2.
+//
+// There are currently two reasons that roles may be assumed:
+//   1. The Teleport database AWS metadata or discovery matcher is configured
+//      to assume a role.
+//   2. Specific protocols (DynamoDB, Redshift Serverless) use AWS assumed roles
+//      for RBAC, where db user is the name of an AWS role to assume.
+//
+// Each session in the chain of assume role calls is cached.
+func (c *cloudClients) GetAWSSession(ctx context.Context, region string, roles ...services.AssumeRole) (*awssession.Session, error) {
+	// Check for obvious errors before retrieving any sessions.
+	roles, err := checkAndSetAssumeRoles(region, roles)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	session, err := c.getAWSSession(region)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if len(roles) == 0 {
+		// return default session for region if not assuming any roles.
 		return session, nil
 	}
-	c.mtx.RUnlock()
-	return c.initAWSSession(region)
-}
 
-// GetAWSSessionForRole returns AWS session for the specified role ARN.
-func (c *cloudClients) GetAWSSessionForRole(ctx context.Context, region, roleARN string) (*awssession.Session, error) {
-	defaultSession, err := c.GetAWSSession(region)
-	if err != nil {
-		return nil, trace.Wrap(err)
+	keyBuilder := NewAWSSessionCacheKeyBuilder(region)
+	for i := range roles {
+		keyBuilder.AddRole(roles[i])
+		cacheKey := keyBuilder.String()
+		session, err = c.getAWSSessionForRole(ctx, cacheKey, session, roles[i])
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
 	}
-
-	// Make a credentials with AssumeRoleProvider and test it out.
-	cred := stscreds.NewCredentials(defaultSession, roleARN)
-	if _, err := cred.GetWithContext(ctx); err != nil {
-		return nil, trace.Wrap(libcloudaws.ConvertRequestFailureError(err))
-	}
-
-	// Create the session with the credentials and the provided AWS region.
-	config := aws.NewConfig().WithCredentials(cred).WithRegion(region)
-	roleSession, err := session.NewSession(config)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	// Do not cache sessions for other roles.
-	return roleSession, nil
+	return session, nil
 }
 
 // GetAWSRDSClient returns AWS RDS client for the specified region.
-func (c *cloudClients) GetAWSRDSClient(region string) (rdsiface.RDSAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSRDSClient(ctx context.Context, region string, roles ...services.AssumeRole) (rdsiface.RDSAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -276,8 +289,8 @@ func (c *cloudClients) GetAWSRDSClient(region string) (rdsiface.RDSAPI, error) {
 }
 
 // GetAWSRedshiftClient returns AWS Redshift client for the specified region.
-func (c *cloudClients) GetAWSRedshiftClient(region string) (redshiftiface.RedshiftAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSRedshiftClient(ctx context.Context, region string, roles ...services.AssumeRole) (redshiftiface.RedshiftAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -285,17 +298,8 @@ func (c *cloudClients) GetAWSRedshiftClient(region string) (redshiftiface.Redshi
 }
 
 // GetAWSRedshiftServerlessClient returns AWS Redshift Serverless client for the specified region.
-func (c *cloudClients) GetAWSRedshiftServerlessClient(region string) (redshiftserverlessiface.RedshiftServerlessAPI, error) {
-	session, err := c.GetAWSSession(region)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return redshiftserverless.New(session), nil
-}
-
-// GetAWSRedshiftServerlessClientForRole returns AWS Redshift Serverless client for the specified region and role ARN.
-func (c *cloudClients) GetAWSRedshiftServerlessClientForRole(ctx context.Context, region, roleARN string) (redshiftserverlessiface.RedshiftServerlessAPI, error) {
-	session, err := c.GetAWSSessionForRole(ctx, region, roleARN)
+func (c *cloudClients) GetAWSRedshiftServerlessClient(ctx context.Context, region string, roles ...services.AssumeRole) (redshiftserverlessiface.RedshiftServerlessAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -303,8 +307,8 @@ func (c *cloudClients) GetAWSRedshiftServerlessClientForRole(ctx context.Context
 }
 
 // GetAWSElastiCacheClient returns AWS ElastiCache client for the specified region.
-func (c *cloudClients) GetAWSElastiCacheClient(region string) (elasticacheiface.ElastiCacheAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSElastiCacheClient(ctx context.Context, region string, roles ...services.AssumeRole) (elasticacheiface.ElastiCacheAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -312,8 +316,8 @@ func (c *cloudClients) GetAWSElastiCacheClient(region string) (elasticacheiface.
 }
 
 // GetAWSMemoryDBClient returns AWS MemoryDB client for the specified region.
-func (c *cloudClients) GetAWSMemoryDBClient(region string) (memorydbiface.MemoryDBAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSMemoryDBClient(ctx context.Context, region string, roles ...services.AssumeRole) (memorydbiface.MemoryDBAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -321,8 +325,8 @@ func (c *cloudClients) GetAWSMemoryDBClient(region string) (memorydbiface.Memory
 }
 
 // GetAWSSecretsManagerClient returns AWS Secrets Manager client for the specified region.
-func (c *cloudClients) GetAWSSecretsManagerClient(region string) (secretsmanageriface.SecretsManagerAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSSecretsManagerClient(ctx context.Context, region string, roles ...services.AssumeRole) (secretsmanageriface.SecretsManagerAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -330,8 +334,8 @@ func (c *cloudClients) GetAWSSecretsManagerClient(region string) (secretsmanager
 }
 
 // GetAWSIAMClient returns AWS IAM client for the specified region.
-func (c *cloudClients) GetAWSIAMClient(region string) (iamiface.IAMAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSIAMClient(ctx context.Context, region string, roles ...services.AssumeRole) (iamiface.IAMAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -339,8 +343,8 @@ func (c *cloudClients) GetAWSIAMClient(region string) (iamiface.IAMAPI, error) {
 }
 
 // GetAWSSTSClient returns AWS STS client for the specified region.
-func (c *cloudClients) GetAWSSTSClient(region string) (stsiface.STSAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSSTSClient(ctx context.Context, region string, roles ...services.AssumeRole) (stsiface.STSAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -348,8 +352,8 @@ func (c *cloudClients) GetAWSSTSClient(region string) (stsiface.STSAPI, error) {
 }
 
 // GetAWSEC2Client returns AWS EC2 client for the specified region.
-func (c *cloudClients) GetAWSEC2Client(region string) (ec2iface.EC2API, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSEC2Client(ctx context.Context, region string, roles ...services.AssumeRole) (ec2iface.EC2API, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -357,8 +361,8 @@ func (c *cloudClients) GetAWSEC2Client(region string) (ec2iface.EC2API, error) {
 }
 
 // GetAWSSSMClient returns AWS SSM client for the specified region.
-func (c *cloudClients) GetAWSSSMClient(region string) (ssmiface.SSMAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSSSMClient(ctx context.Context, region string, roles ...services.AssumeRole) (ssmiface.SSMAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -366,8 +370,8 @@ func (c *cloudClients) GetAWSSSMClient(region string) (ssmiface.SSMAPI, error) {
 }
 
 // GetAWSEKSClient returns AWS EKS client for the specified region.
-func (c *cloudClients) GetAWSEKSClient(region string) (eksiface.EKSAPI, error) {
-	session, err := c.GetAWSSession(region)
+func (c *cloudClients) GetAWSEKSClient(ctx context.Context, region string, roles ...services.AssumeRole) (eksiface.EKSAPI, error) {
+	session, err := c.GetAWSSession(ctx, region, roles...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -527,10 +531,21 @@ func (c *cloudClients) Close() (err error) {
 	return trace.Wrap(err)
 }
 
+// getAWSSession returns AWS session for the specified region.
+func (c *cloudClients) getAWSSession(region string) (*awssession.Session, error) {
+	c.mtx.RLock()
+	if session, ok := c.awsSessions[region]; ok {
+		c.mtx.RUnlock()
+		return session, nil
+	}
+	c.mtx.RUnlock()
+	return c.initAWSSession(region)
+}
+
 func (c *cloudClients) initAWSSession(region string) (*awssession.Session, error) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	if session, ok := c.awsSessions[region]; ok { // If some other thead already got here first.
+	if session, ok := c.awsSessions[region]; ok { // If some other thread already got here first.
 		return session, nil
 	}
 	logrus.Debugf("Initializing AWS session for region %v.", region)
@@ -545,6 +560,43 @@ func (c *cloudClients) initAWSSession(region string) (*awssession.Session, error
 	}
 	c.awsSessions[region] = session
 	return session, nil
+}
+
+func (c *cloudClients) getAWSSessionForRole(ctx context.Context, cacheKey string, baseSession *awssession.Session, role services.AssumeRole) (*awssession.Session, error) {
+	c.mtx.RLock()
+	if cachedSession, ok := c.awsSessions[cacheKey]; ok {
+		c.mtx.RUnlock()
+		return cachedSession, nil
+	}
+	c.mtx.RUnlock()
+	return c.initAWSSessionForRole(ctx, cacheKey, baseSession, role)
+}
+
+func (c *cloudClients) initAWSSessionForRole(ctx context.Context, cacheKey string, baseSession *awssession.Session, role services.AssumeRole) (*awssession.Session, error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if cachedSession, ok := c.awsSessions[cacheKey]; ok { // If some other thread already got here first.
+		return cachedSession, nil
+	}
+	logrus.Debugf("Initializing AWS session for assumed role: %q.", cacheKey)
+	// Make a credentials with AssumeRoleProvider and test it out.
+	cred := stscreds.NewCredentials(baseSession, role.RoleARN, func(p *stscreds.AssumeRoleProvider) {
+		if role.ExternalID != "" {
+			p.ExternalID = aws.String(role.ExternalID)
+		}
+	})
+	if _, err := cred.GetWithContext(ctx); err != nil {
+		return nil, trace.Wrap(libcloudaws.ConvertRequestFailureError(err))
+	}
+
+	// Create a new session with the credentials.
+	config := baseSession.Config.Copy().WithCredentials(cred)
+	roleSession, err := awssession.NewSession(config)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	c.awsSessions[cacheKey] = roleSession
+	return roleSession, nil
 }
 
 func (c *cloudClients) initGCPIAMClient(ctx context.Context) (*gcpcredentials.IamCredentialsClient, error) {
@@ -729,6 +781,11 @@ var _ Clients = (*TestCloudClients)(nil)
 
 // TestCloudClients are used in tests.
 type TestCloudClients struct {
+	// RequireRoles is used to test that cloud client functions are passed role(s) to assume.
+	RequireRoles bool
+	// AWSAssumeRoleSessions is a map of assume-role -> session. Used to test that the expected roles are
+	// assumed by callers of cloud client functions.
+	AWSAssumeRoleSessions   map[string]*awssession.Session
 	RDS                     rdsiface.RDSAPI
 	RDSPerRegion            map[string]rdsiface.RDSAPI
 	Redshift                redshiftiface.RedshiftAPI
@@ -761,9 +818,34 @@ type TestCloudClients struct {
 	AzureRunCommand         azure.RunCommandClient
 }
 
+// GetAWSSession returns AWS session for the specified role ARN.
+func (c *TestCloudClients) GetAWSSession(ctx context.Context, region string, roles ...services.AssumeRole) (*awssession.Session, error) {
+	// Check for obvious errors before retrieving any sessions.
+	roles, err := checkAndSetAssumeRoles(region, roles)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if len(roles) == 0 {
+		if c.RequireRoles {
+			return nil, trace.BadParameter("test cloud clients requires roles")
+		}
+		return c.getAWSSession(region)
+	}
+	keyBuilder := NewAWSSessionCacheKeyBuilder(region)
+	for i := range roles {
+		keyBuilder.AddRole(roles[i])
+	}
+	key := keyBuilder.String()
+	session, ok := c.AWSAssumeRoleSessions[key]
+	if !ok {
+		return nil, trace.NotFound("AWSSession %v not found in TestCloudClients", key)
+	}
+	return session, nil
+}
+
 // GetAWSSession returns AWS session for the specified region.
-func (c *TestCloudClients) GetAWSSession(region string) (*awssession.Session, error) {
-	return session.NewSession(&aws.Config{
+func (c *TestCloudClients) getAWSSession(region string) (*awssession.Session, error) {
+	return awssession.NewSession(&aws.Config{
 		Credentials: credentials.NewCredentials(&credentials.StaticProvider{Value: credentials.Value{
 			AccessKeyID:     "fakeClientKeyID",
 			SecretAccessKey: "fakeClientSecret",
@@ -772,13 +854,12 @@ func (c *TestCloudClients) GetAWSSession(region string) (*awssession.Session, er
 	})
 }
 
-// GetAWSSessionForRole returns AWS session for the specified role ARN.
-func (c *TestCloudClients) GetAWSSessionForRole(ctx context.Context, region, roleARN string) (*awssession.Session, error) {
-	return nil, trace.NotImplemented("not implemented")
-}
-
 // GetAWSRDSClient returns AWS RDS client for the specified region.
-func (c *TestCloudClients) GetAWSRDSClient(region string) (rdsiface.RDSAPI, error) {
+func (c *TestCloudClients) GetAWSRDSClient(ctx context.Context, region string, roles ...services.AssumeRole) (rdsiface.RDSAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	if len(c.RDSPerRegion) != 0 {
 		return c.RDSPerRegion[region], nil
 	}
@@ -786,43 +867,93 @@ func (c *TestCloudClients) GetAWSRDSClient(region string) (rdsiface.RDSAPI, erro
 }
 
 // GetAWSRedshiftClient returns AWS Redshift client for the specified region.
-func (c *TestCloudClients) GetAWSRedshiftClient(region string) (redshiftiface.RedshiftAPI, error) {
+func (c *TestCloudClients) GetAWSRedshiftClient(ctx context.Context, region string, roles ...services.AssumeRole) (redshiftiface.RedshiftAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.Redshift, nil
 }
 
 // GetAWSRedshiftServerlessClient returns AWS Redshift Serverless client for the specified region.
-func (c *TestCloudClients) GetAWSRedshiftServerlessClient(region string) (redshiftserverlessiface.RedshiftServerlessAPI, error) {
-	return c.RedshiftServerless, nil
-}
-
-// GetAWSRedshiftServerlessClientForRole returns AWS Redshift Serverless client for the specified region and role ARN.
-func (c *TestCloudClients) GetAWSRedshiftServerlessClientForRole(ctx context.Context, region, roleARN string) (redshiftserverlessiface.RedshiftServerlessAPI, error) {
+func (c *TestCloudClients) GetAWSRedshiftServerlessClient(ctx context.Context, region string, roles ...services.AssumeRole) (redshiftserverlessiface.RedshiftServerlessAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.RedshiftServerless, nil
 }
 
 // GetAWSElastiCacheClient returns AWS ElastiCache client for the specified region.
-func (c *TestCloudClients) GetAWSElastiCacheClient(region string) (elasticacheiface.ElastiCacheAPI, error) {
+func (c *TestCloudClients) GetAWSElastiCacheClient(ctx context.Context, region string, roles ...services.AssumeRole) (elasticacheiface.ElastiCacheAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.ElastiCache, nil
 }
 
 // GetAWSMemoryDBClient returns AWS MemoryDB client for the specified region.
-func (c *TestCloudClients) GetAWSMemoryDBClient(region string) (memorydbiface.MemoryDBAPI, error) {
+func (c *TestCloudClients) GetAWSMemoryDBClient(ctx context.Context, region string, roles ...services.AssumeRole) (memorydbiface.MemoryDBAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.MemoryDB, nil
 }
 
 // GetAWSSecretsManagerClient returns AWS Secrets Manager client for the specified region.
-func (c *TestCloudClients) GetAWSSecretsManagerClient(region string) (secretsmanageriface.SecretsManagerAPI, error) {
+func (c *TestCloudClients) GetAWSSecretsManagerClient(ctx context.Context, region string, roles ...services.AssumeRole) (secretsmanageriface.SecretsManagerAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.SecretsManager, nil
 }
 
 // GetAWSIAMClient returns AWS IAM client for the specified region.
-func (c *TestCloudClients) GetAWSIAMClient(region string) (iamiface.IAMAPI, error) {
+func (c *TestCloudClients) GetAWSIAMClient(ctx context.Context, region string, roles ...services.AssumeRole) (iamiface.IAMAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.IAM, nil
 }
 
 // GetAWSSTSClient returns AWS STS client for the specified region.
-func (c *TestCloudClients) GetAWSSTSClient(region string) (stsiface.STSAPI, error) {
+func (c *TestCloudClients) GetAWSSTSClient(ctx context.Context, region string, roles ...services.AssumeRole) (stsiface.STSAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	return c.STS, nil
+}
+
+// GetAWSEKSClient returns AWS EKS client for the specified region.
+func (c *TestCloudClients) GetAWSEKSClient(ctx context.Context, region string, roles ...services.AssumeRole) (eksiface.EKSAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return c.EKS, nil
+}
+
+// GetAWSEC2Client returns AWS EC2 client for the specified region.
+func (c *TestCloudClients) GetAWSEC2Client(ctx context.Context, region string, roles ...services.AssumeRole) (ec2iface.EC2API, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return c.EC2, nil
+}
+
+// GetAWSSSMClient returns an AWS SSM client
+func (c *TestCloudClients) GetAWSSSMClient(ctx context.Context, region string, roles ...services.AssumeRole) (ssmiface.SSMAPI, error) {
+	_, err := c.GetAWSSession(ctx, region, roles...)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return c.SSM, nil
 }
 
 // GetGCPIAMClient returns GCP IAM client.
@@ -852,22 +983,12 @@ func (c *TestCloudClients) GetAzureCredential() (azcore.TokenCredential, error) 
 	return &azidentity.ChainedTokenCredential{}, nil
 }
 
-// GetAWSEC2Client returns AWS EC2 client for the specified region.
-func (c *TestCloudClients) GetAWSEC2Client(region string) (ec2iface.EC2API, error) {
-	return c.EC2, nil
-}
-
 // GetAzureMySQLClient returns an AzureMySQLClient for the specified subscription
 func (c *TestCloudClients) GetAzureMySQLClient(subscription string) (azure.DBServersClient, error) {
 	if len(c.AzureMySQLPerSub) != 0 {
 		return c.AzureMySQLPerSub[subscription], nil
 	}
 	return c.AzureMySQL, nil
-}
-
-// GetAWSEKSClient returns AWS EKS client for the specified region.
-func (c *TestCloudClients) GetAWSEKSClient(region string) (eksiface.EKSAPI, error) {
-	return c.EKS, nil
 }
 
 // GetAzurePostgresClient returns an AzurePostgresClient for the specified subscription
@@ -889,11 +1010,6 @@ func (c *TestCloudClients) GetAzureKubernetesClient(subscription string) (azure.
 // GetAzureSubscriptionClient returns an Azure SubscriptionClient
 func (c *TestCloudClients) GetAzureSubscriptionClient() (*azure.SubscriptionClient, error) {
 	return c.AzureSubscriptionClient, nil
-}
-
-// GetAWSSSMClient returns an AWS SSM client
-func (c *TestCloudClients) GetAWSSSMClient(region string) (ssmiface.SSMAPI, error) {
-	return c.SSM, nil
 }
 
 // GetAzureRedisClient returns an Azure Redis client for the given subscription.
@@ -941,4 +1057,90 @@ func (c *TestCloudClients) GetAzureRunCommandClient(subscription string) (azure.
 // Close closes all initialized clients.
 func (c *TestCloudClients) Close() error {
 	return nil
+}
+
+// AWSSessionCacheKeyBuilder is a helper struct wrapper around a string builder
+// that is used to efficiently build cache keys for a given region and, optionally,
+// a chain of AWS assumed-role sessions.
+type AWSSessionCacheKeyBuilder struct {
+	sb        *strings.Builder
+	roleCount int
+}
+
+// NewAWSSessionCacheKeyBuilder constructs a new cache key builder intialized
+// with a specific AWS region.
+func NewAWSSessionCacheKeyBuilder(region string) AWSSessionCacheKeyBuilder {
+	sb := strings.Builder{}
+	_, _ = sb.WriteString(region) // infalliable.
+	return AWSSessionCacheKeyBuilder{sb: &sb}
+}
+
+// AddRole adds an AWS IAM role to the cache key builder.
+func (c *AWSSessionCacheKeyBuilder) AddRole(awsRole services.AssumeRole) {
+	// Role ARN can potentially come from user input via --db-user for some
+	// protocols.
+	// Out of paranoia for crafted user input, I build the key in a way that
+	// will avoid fetching an AWS session from cache that the user should not
+	// have access to.
+	key := fmt.Sprintf(":Role[%d]:ARN[%v]:ExternalID[%v]", c.roleCount, awsRole.RoleARN, awsRole.ExternalID)
+	_, _ = c.sb.WriteString(key) // infalliable.
+	c.roleCount++
+}
+
+func (c *AWSSessionCacheKeyBuilder) String() string {
+	return c.sb.String()
+}
+
+// checkAndSetAssumeRoles checks a chain of AWS IAM roles for obvious errors that
+// would return an error from AWS API, and eliminates superfluous external IDs
+// from the chain.
+// "obvious" errors include:
+//   - ARN fails to parse, or is not an IAM Role.
+//   - a role is in a different partition than the given region.
+//   - a role is in a different account than the next role and the next role
+//     does not have an external ID.
+// "superfluous external IDs" are those for a role that is in the same account
+// as the role preceeding it in the chain.
+func checkAndSetAssumeRoles(region string, roles []services.AssumeRole) ([]services.AssumeRole, error) {
+	roles = filterAssumeRoles(roles)
+	if len(roles) == 0 {
+		return roles, nil
+	}
+	partition := apiawsutils.GetPartitionFromRegion(region)
+	ARNs := make([]*arn.ARN, 0, len(roles))
+	for i := range roles {
+		parsed, err := awsutils.ParseRoleARN(roles[i].RoleARN)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		err = awsutils.CheckARNPartitionAndAccount(parsed, partition, "")
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		ARNs = append(ARNs, parsed)
+	}
+	for i := 0; i < len(ARNs)-1; i++ {
+		if ARNs[i].AccountID == ARNs[i+1].AccountID {
+			// don't use external ID to assume a role in the same account.
+			roles[i+1].ExternalID = ""
+		} else if roles[i+1].ExternalID == "" {
+			return nil, trace.BadParameter("%v cannot assume external account role %v without an external ID",
+				roles[i].RoleARN, roles[i+1].RoleARN)
+		}
+	}
+	return roles, nil
+}
+
+// filterAssumeRoles is a helper function that filters out roles that have an empty role ARN.
+func filterAssumeRoles(roles []services.AssumeRole) []services.AssumeRole {
+	if len(roles) == 0 {
+		return roles
+	}
+	filteredRoles := make([]services.AssumeRole, 0, len(roles))
+	for i := range roles {
+		if roles[i].RoleARN != "" {
+			filteredRoles = append(filteredRoles, roles[i])
+		}
+	}
+	return filteredRoles
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/cloud"
 	awslib "github.com/gravitational/teleport/lib/cloud/aws"
+	"github.com/gravitational/teleport/lib/services"
 	dbiam "github.com/gravitational/teleport/lib/srv/db/common/iam"
 )
 
@@ -68,11 +69,13 @@ func newAWS(ctx context.Context, config awsConfig) (*awsClient, error) {
 	if err := config.Check(); err != nil {
 		return nil, trace.Wrap(err)
 	}
-	rds, err := config.clients.GetAWSRDSClient(config.database.GetAWS().Region)
+	meta := config.database.GetAWS()
+	assumeRole := services.AssumeRoleFromAWSMetadata(&meta)
+	rds, err := config.clients.GetAWSRDSClient(ctx, meta.Region, assumeRole)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	iam, err := config.clients.GetAWSIAMClient(config.database.GetAWS().Region)
+	iam, err := config.clients.GetAWSIAMClient(ctx, meta.Region, assumeRole)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -147,17 +150,18 @@ func (r *awsClient) ensureIAMAuth(ctx context.Context) error {
 func (r *awsClient) enableIAMAuthForRDS(ctx context.Context) error {
 	r.log.Debug("Enabling IAM auth for RDS.")
 	var err error
-	if r.cfg.database.GetAWS().RDS.ClusterID != "" {
+	meta := r.cfg.database.GetAWS()
+	if meta.RDS.ClusterID != "" {
 		_, err = r.rds.ModifyDBClusterWithContext(ctx, &rds.ModifyDBClusterInput{
-			DBClusterIdentifier:             aws.String(r.cfg.database.GetAWS().RDS.ClusterID),
+			DBClusterIdentifier:             aws.String(meta.RDS.ClusterID),
 			EnableIAMDatabaseAuthentication: aws.Bool(true),
 			ApplyImmediately:                aws.Bool(true),
 		})
 		return awslib.ConvertIAMError(err)
 	}
-	if r.cfg.database.GetAWS().RDS.InstanceID != "" {
+	if meta.RDS.InstanceID != "" {
 		_, err = r.rds.ModifyDBInstanceWithContext(ctx, &rds.ModifyDBInstanceInput{
-			DBInstanceIdentifier:            aws.String(r.cfg.database.GetAWS().RDS.InstanceID),
+			DBInstanceIdentifier:            aws.String(meta.RDS.InstanceID),
 			EnableIAMDatabaseAuthentication: aws.Bool(true),
 			ApplyImmediately:                aws.Bool(true),
 		})

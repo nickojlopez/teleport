@@ -27,6 +27,7 @@ import (
 
 	"github.com/gravitational/teleport/api/types"
 	libaws "github.com/gravitational/teleport/lib/cloud/aws"
+	"github.com/gravitational/teleport/lib/services"
 	libsecrets "github.com/gravitational/teleport/lib/srv/db/secrets"
 	libutils "github.com/gravitational/teleport/lib/utils"
 )
@@ -71,12 +72,13 @@ func (f *elastiCacheFetcher) FetchDatabaseUsers(ctx context.Context, database ty
 		return nil, nil
 	}
 
-	client, err := f.cfg.Clients.GetAWSElastiCacheClient(meta.Region)
+	role := services.AssumeRoleFromAWSMetadata(&meta)
+	client, err := f.cfg.Clients.GetAWSElastiCacheClient(ctx, meta.Region, role)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 
-	secrets, err := newSecretStore(database, f.cfg.Clients)
+	secrets, err := newSecretStore(ctx, database, f.cfg.Clients)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

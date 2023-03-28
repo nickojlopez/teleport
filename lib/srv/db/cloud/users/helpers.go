@@ -17,6 +17,7 @@ limitations under the License.
 package users
 
 import (
+	"context"
 	"strings"
 	"sync"
 
@@ -25,6 +26,7 @@ import (
 
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/cloud"
+	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/srv/db/secrets"
 	"github.com/gravitational/teleport/lib/utils"
 )
@@ -152,11 +154,12 @@ func genRandomPassword(length int) (string, error) {
 }
 
 // newSecretStore create a new secrets store helper for provided database.
-func newSecretStore(database types.Database, clients cloud.Clients) (secrets.Secrets, error) {
+func newSecretStore(ctx context.Context, database types.Database, clients cloud.Clients) (secrets.Secrets, error) {
 	secretStoreConfig := database.GetSecretStore()
 
 	meta := database.GetAWS()
-	client, err := clients.GetAWSSecretsManagerClient(meta.Region)
+	role := services.AssumeRoleFromAWSMetadata(&meta)
+	client, err := clients.GetAWSSecretsManagerClient(ctx, meta.Region, role)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
