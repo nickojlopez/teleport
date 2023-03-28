@@ -193,7 +193,7 @@ We can extend our current File Transfer UI for almost every aspect of moderated 
 
 A user will follow the normal file transfer dialog and, if in a moderated session, show a "waiting for approval state"
 
-![new file transfer dialogs](https://user-images.githubusercontent.com/5201977/227379373-f7afb730-630f-4577-a12a-976279cc7cda.png)
+![new file transfer dialogs](https://user-images.githubusercontent.com/5201977/228383679-f14352bf-a305-4bbd-ae28-f5fb8d0a0d10.png)
 
 If a request is approved, the user view will continue to look/function the same way as a regular request currently. 
 
