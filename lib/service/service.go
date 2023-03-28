@@ -527,6 +527,11 @@ func (process *TeleportProcess) WaitForConnector(identityEvent string, log logru
 	return conn, nil
 }
 
+// GetID returns the process ID.
+func (process *TeleportProcess) GetID() string {
+	return process.id
+}
+
 func (process *TeleportProcess) setClusterFeatures(features *proto.Features) {
 	process.Lock()
 	defer process.Unlock()
@@ -1095,6 +1100,12 @@ func NewTeleport(cfg *servicecfg.Config) (*TeleportProcess, error) {
 		warnOnErr(process.closeImportedDescriptors(teleport.ComponentDiscovery), process.log)
 	}
 
+	// Enterprise services will be handled by the enterprise binary. We'll let these set serviceStarted
+	// to true and let the enterprise binary error if need be.
+	if process.enterpriseServicesEnabled() {
+		serviceStarted = true
+	}
+
 	process.RegisterFunc("common.rotate", process.periodicSyncRotationState)
 
 	// run one upload completer per-process
@@ -1128,6 +1139,11 @@ func NewTeleport(cfg *servicecfg.Config) (*TeleportProcess, error) {
 	go process.notifyParent()
 
 	return process, nil
+}
+
+// enterpriseServicesEnabled will return true of any enterprise services are enabled.
+func (process *TeleportProcess) enterpriseServicesEnabled() bool {
+	return modules.GetModules().BuildType() == modules.BuildEnterprise && (process.Config.Okta.Enabled)
 }
 
 // notifyParent notifies parent process that this process has started
@@ -1928,6 +1944,7 @@ func (process *TeleportProcess) newAccessCache(cfg accessCacheConfig) (*cache.Ca
 		WindowsDesktops:         cfg.services,
 		SAMLIdPServiceProviders: cfg.services,
 		UserGroups:              cfg.services,
+		Okta:                    cfg.services.OktaClient(),
 		WebSession:              cfg.services.WebSessions(),
 		WebToken:                cfg.services.WebTokens(),
 		Component:               teleport.Component(append(cfg.cacheName, process.id, teleport.ComponentCache)...),
@@ -2994,6 +3011,53 @@ type proxyListeners struct {
 	minimalTLS       *multiplexer.WebListener
 }
 
+// Close closes all proxy listeners.
+func (l *proxyListeners) Close() {
+	if l.mux != nil {
+		l.mux.Close()
+	}
+	if l.sshMux != nil {
+		l.sshMux.Close()
+	}
+	if l.tls != nil {
+		l.tls.Close()
+	}
+	if l.ssh != nil {
+		l.ssh.Close()
+	}
+	if l.sshGRPC != nil {
+		l.sshGRPC.Close()
+	}
+	if l.web != nil {
+		l.web.Close()
+	}
+	if l.reverseTunnel != nil {
+		l.reverseTunnel.Close()
+	}
+	if l.kube != nil {
+		l.kube.Close()
+	}
+	l.db.Close()
+	if l.alpn != nil {
+		l.alpn.Close()
+	}
+	if l.proxyPeer != nil {
+		l.proxyPeer.Close()
+	}
+	if l.grpcPublic != nil {
+		l.grpcPublic.Close()
+	}
+	if l.grpcMTLS != nil {
+		l.grpcMTLS.Close()
+	}
+	if l.reverseTunnelMux != nil {
+		l.reverseTunnelMux.Close()
+	}
+	if l.minimalTLS != nil {
+		l.minimalTLS.Close()
+	}
+}
+
 // dbListeners groups database access listeners.
 type dbListeners struct {
 	// postgres serves Postgres clients.
@@ -3024,46 +3088,6 @@ func (l *dbListeners) Close() {
 	}
 	if l.mongo != nil {
 		l.mongo.Close()
-	}
-}
-
-// Close closes all proxy listeners.
-func (l *proxyListeners) Close() {
-	if l.mux != nil {
-		l.mux.Close()
-	}
-	if l.sshMux != nil {
-		l.sshMux.Close()
-	}
-	if l.tls != nil {
-		l.tls.Close()
-	}
-	if l.web != nil {
-		l.web.Close()
-	}
-	if l.reverseTunnel != nil {
-		l.reverseTunnel.Close()
-	}
-	if l.kube != nil {
-		l.kube.Close()
-	}
-	if !l.db.Empty() {
-		l.db.Close()
-	}
-	if l.grpcPublic != nil {
-		l.grpcPublic.Close()
-	}
-	if l.grpcMTLS != nil {
-		l.grpcMTLS.Close()
-	}
-	if l.proxyPeer != nil {
-		l.proxyPeer.Close()
-	}
-	if l.reverseTunnelMux != nil {
-		l.reverseTunnelMux.Close()
-	}
-	if l.minimalTLS != nil {
-		l.minimalTLS.Close()
 	}
 }
 
@@ -3222,8 +3246,7 @@ func (process *TeleportProcess) setupProxyListeners(networkingConfig types.Clust
 		listeners.web = listeners.mux.TLS()
 		process.muxPostgresOnWebPort(cfg, &listeners)
 		if !cfg.Proxy.ReverseTunnelListenAddr.IsEmpty() {
-			listeners.reverseTunnel, err = process.importOrCreateListener(ListenerProxyTunnel, cfg.Proxy.ReverseTunnelListenAddr.Addr)
-			if err != nil {
+			if err := process.initMinimalReverseTunnelListener(cfg, &listeners); err != nil {
 				listener.Close()
 				listeners.Close()
 				return nil, trace.Wrap(err)
@@ -3481,6 +3504,7 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 				TLSConfig:   clientTLSConfig,
 				Log:         process.log,
 				Clock:       process.Clock,
+				ClusterName: clusterName,
 			})
 			if err != nil {
 				return trace.Wrap(err)
@@ -3736,6 +3760,7 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 			TLSConfig:     serverTLSConfig,
 			ClusterDialer: clusterdial.NewClusterDialer(tsrv),
 			Log:           log,
+			ClusterName:   clusterName,
 		})
 		if err != nil {
 			return trace.Wrap(err)
@@ -3974,19 +3999,29 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 		if err != nil {
 			return trace.Wrap(err)
 		}
+
+		connMonitor, err := srv.NewConnectionMonitor(srv.ConnectionMonitorConfig{
+			AccessPoint: accessPoint,
+			LockWatcher: lockWatcher,
+			Clock:       process.Config.Clock,
+			ServerID:    process.Config.HostUUID,
+			Emitter:     asyncEmitter,
+			Logger:      process.log,
+		})
+		if err != nil {
+			return trace.Wrap(err)
+		}
+
 		dbProxyServer, err := db.NewProxyServer(process.ExitContext(),
 			db.ProxyServerConfig{
-				AuthClient:      conn.Client,
-				AccessPoint:     accessPoint,
-				Authorizer:      authorizer,
-				Tunnel:          tsrv,
-				TLSConfig:       tlsConfig,
-				Limiter:         connLimiter,
-				Emitter:         asyncEmitter,
-				Clock:           process.Clock,
-				ServerID:        cfg.HostUUID,
-				LockWatcher:     lockWatcher,
-				IngressReporter: ingressReporter,
+				AuthClient:        conn.Client,
+				AccessPoint:       accessPoint,
+				Authorizer:        authorizer,
+				Tunnel:            tsrv,
+				TLSConfig:         tlsConfig,
+				Limiter:           connLimiter,
+				IngressReporter:   ingressReporter,
+				ConnectionMonitor: connMonitor,
 			})
 		if err != nil {
 			return trace.Wrap(err)
@@ -4712,6 +4747,19 @@ func (process *TeleportProcess) initApps() {
 
 		proxyGetter := reversetunnel.NewConnectedProxyGetter()
 
+		connMonitor, err := srv.NewConnectionMonitor(srv.ConnectionMonitorConfig{
+			AccessPoint:         accessPoint,
+			LockWatcher:         lockWatcher,
+			Clock:               process.Config.Clock,
+			ServerID:            process.Config.HostUUID,
+			Emitter:             asyncEmitter,
+			Logger:              process.log,
+			MonitorCloseChannel: process.Config.Apps.MonitorCloseChannel,
+		})
+		if err != nil {
+			return trace.Wrap(err)
+		}
+
 		appServer, err := app.New(process.ExitContext(), &app.Config{
 			Clock:                process.Config.Clock,
 			DataDir:              process.Config.DataDir,
@@ -4728,9 +4776,8 @@ func (process *TeleportProcess) initApps() {
 			ResourceMatchers:     process.Config.Apps.ResourceMatchers,
 			OnHeartbeat:          process.onHeartbeat(teleport.ComponentApp),
 			ConnectedProxyGetter: proxyGetter,
-			LockWatcher:          lockWatcher,
 			Emitter:              asyncEmitter,
-			MonitorCloseChannel:  process.Config.Apps.MonitorCloseChannel,
+			ConnectionMonitor:    connMonitor,
 		})
 		if err != nil {
 			return trace.Wrap(err)
