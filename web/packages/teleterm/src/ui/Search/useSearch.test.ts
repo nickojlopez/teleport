@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-import { SearchResult } from './searchResult';
 import { sortResults } from './useSearch';
-
-import type * as tsh from 'teleterm/services/tshd/types';
+import { makeResult, makeServer, makeKube } from './searchResultTestHelpers';
 
 describe('sortResults', () => {
   it('uses the displayed resource name as the tie breaker if the scores are equal', () => {
@@ -34,33 +32,4 @@ describe('sortResults', () => {
     expect(sortedResults[0]).toEqual(kube);
     expect(sortedResults[1]).toEqual(server);
   });
-});
-
-const makeServer = (props: Partial<tsh.Server>): tsh.Server => ({
-  uri: '/clusters/bar/servers/foo',
-  tunnel: false,
-  name: 'foo',
-  hostname: 'foo',
-  addr: 'localhost',
-  labelsList: [],
-  ...props,
-});
-
-const makeKube = (props: Partial<tsh.Kube>): tsh.Kube => ({
-  name: 'foo',
-  labelsList: [],
-  uri: '/clusters/bar/kubes/foo',
-  ...props,
-});
-
-const makeResult = (
-  props: Partial<SearchResult> & {
-    kind: SearchResult['kind'];
-    resource: SearchResult['resource'];
-  }
-): SearchResult => ({
-  score: 0,
-  labelMatches: [],
-  resourceMatches: [],
-  ...props,
 });

@@ -22,10 +22,8 @@ import React, {
   useState,
 } from 'react';
 import styled from 'styled-components';
-
 import { Box, Flex, Label as DesignLabel, Text } from 'design';
 import * as icons from 'design/Icon';
-
 import { makeEmptyAttempt, useAsync, mapAttempt } from 'shared/hooks/useAsync';
 import { Highlight } from 'shared/components/Highlight';
 
@@ -169,7 +167,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-const ComponentMap: Record<
+export const ComponentMap: Record<
   SearchResult['kind'],
   React.FC<SearchResultItem<SearchResult>>
 > = {
@@ -183,9 +181,12 @@ type SearchResultItem<T> = {
   getClusterName: (uri: uri.ResourceUri) => string;
 };
 
-function ServerItem(props: SearchResultItem<SearchResultServer>) {
+export function ServerItem(props: SearchResultItem<SearchResultServer>) {
   const { searchResult } = props;
   const server = searchResult.resource;
+  const hasUuidMatches = searchResult.resourceMatches.some(
+    match => match.field === 'name'
+  );
 
   return (
     <Flex flexDirection="column" minWidth="300px" gap={1}>
@@ -209,23 +210,57 @@ function ServerItem(props: SearchResultItem<SearchResultServer>) {
       </Flex>
 
       <Labels searchResult={searchResult}>
-        <DesignLabel key={'addr'} kind="secondary">
+        <ResourceFields>
           {server.tunnel ? (
             <span title="This node is connected to the cluster through a reverse tunnel">
               ↵ tunnel
             </span>
           ) : (
-            <HighlightField field="addr" searchResult={searchResult} />
+            <span>
+              <HighlightField field="addr" searchResult={searchResult} />
+            </span>
           )}
-        </DesignLabel>
+
+          {hasUuidMatches && (
+            <span>
+              UUID:{' '}
+              <HighlightField field={'name'} searchResult={searchResult} />
+            </span>
+          )}
+        </ResourceFields>
       </Labels>
     </Flex>
   );
 }
 
-function DatabaseItem(props: SearchResultItem<SearchResultDatabase>) {
+export function DatabaseItem(props: SearchResultItem<SearchResultDatabase>) {
   const { searchResult } = props;
   const db = searchResult.resource;
+
+  const $resourceFields = (
+    <ResourceFields>
+      <span
+        css={`
+          flex-shrink: 0;
+        `}
+      >
+        <HighlightField field="type" searchResult={searchResult} />
+        /
+        <HighlightField field="protocol" searchResult={searchResult} />
+      </span>
+      {db.desc && (
+        <span
+          css={`
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          `}
+        >
+          <HighlightField field="desc" searchResult={searchResult} />
+        </span>
+      )}
+    </ResourceFields>
+  );
 
   return (
     <Flex flexDirection="column" minWidth="300px" gap={1}>
@@ -255,23 +290,22 @@ function DatabaseItem(props: SearchResultItem<SearchResultDatabase>) {
         </Box>
       </Flex>
 
-      <Labels searchResult={searchResult}>
-        <DesignLabel key={'type-protocol'} kind="secondary">
-          <HighlightField field="type" searchResult={searchResult} />
-          /
-          <HighlightField field="protocol" searchResult={searchResult} />
-        </DesignLabel>
-        {db.desc && (
-          <DesignLabel key={'desc'} kind="secondary">
-            <HighlightField field="desc" searchResult={searchResult} />
-          </DesignLabel>
-        )}
-      </Labels>
+      {/* If the description is long, put the resource fields on a separate line.
+          Otherwise show the resource fields and the labels together in a single line.
+       */}
+      {db.desc.length >= 30 ? (
+        <>
+          {$resourceFields}
+          <Labels searchResult={searchResult} />
+        </>
+      ) : (
+        <Labels searchResult={searchResult}>{$resourceFields}</Labels>
+      )}
     </Flex>
   );
 }
 
-function KubeItem(props: SearchResultItem<SearchResultKube>) {
+export function KubeItem(props: SearchResultItem<SearchResultKube>) {
   const { searchResult } = props;
 
   return (
@@ -306,7 +340,7 @@ function Labels(
   const { searchResult } = props;
 
   return (
-    <Flex gap={1} flexWrap="wrap">
+    <LabelsFlex>
       {props.children}
       {searchResult.resource.labelsList.map(label => (
         <Label
@@ -315,9 +349,26 @@ function Labels(
           label={label}
         />
       ))}
-    </Flex>
+    </LabelsFlex>
   );
 }
+
+const LabelsFlex = styled(Flex).attrs({ gap: 1 })`
+  overflow-x: hidden;
+  flex-wrap: nowrap;
+  align-items: baseline;
+
+  // Make the children not shrink, otherwise they would shrink in attempt to render all labels in
+  // the same row.
+  & > * {
+    flex-shrink: 0;
+  }
+`;
+
+const ResourceFields = styled(Flex).attrs({ gap: 1 })`
+  color: ${props => props.theme.colors.text.primary};
+  font-size: ${props => props.theme.fontSizes[0]}px;
+`;
 
 function Label(props: { searchResult: SearchResult; label: tsh.Label }) {
   const { searchResult: item, label } = props;
@@ -332,7 +383,11 @@ function Label(props: { searchResult: SearchResult; label: tsh.Label }) {
     .map(match => match.searchTerm);
 
   return (
-    <DesignLabel key={label.name} kind="secondary">
+    <DesignLabel
+      key={label.name}
+      kind="secondary"
+      title={`${label.name}: ${label.value}`}
+    >
       <Highlight text={label.name} keywords={nameMatches} />:{' '}
       <Highlight text={label.value} keywords={valueMatches} />
     </DesignLabel>
