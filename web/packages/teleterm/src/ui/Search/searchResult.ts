@@ -41,6 +41,8 @@ export type LabelMatch = {
   kind: 'label-name' | 'label-value';
   labelName: string;
   searchTerm: string;
+  // Individual score of this label match; how much it contributes to the total score.
+  score: number;
 };
 
 export type ResourceMatch<Kind extends SearchResult['kind']> = {

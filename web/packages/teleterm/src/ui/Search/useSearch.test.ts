@@ -15,7 +15,12 @@
  */
 
 import { sortResults } from './useSearch';
-import { makeResult, makeServer, makeKube } from './searchResultTestHelpers';
+import {
+  makeResult,
+  makeServer,
+  makeKube,
+  makeLabelsList,
+} from './searchResultTestHelpers';
 
 describe('sortResults', () => {
   it('uses the displayed resource name as the tie breaker if the scores are equal', () => {
@@ -31,5 +36,31 @@ describe('sortResults', () => {
 
     expect(sortedResults[0]).toEqual(kube);
     expect(sortedResults[1]).toEqual(server);
+  });
+
+  it('saves individual label match scores', () => {
+    const server = makeResult({
+      kind: 'server',
+      resource: makeServer({
+        labelsList: makeLabelsList({ quux: 'bar-baz', foo: 'bar' }),
+      }),
+    });
+
+    const { labelMatches } = sortResults([server], 'foo bar')[0];
+
+    labelMatches.forEach(match => {
+      expect(match.score).toBeGreaterThan(0);
+    });
+
+    const quuxMatches = labelMatches.filter(
+      match => match.labelName === 'quux'
+    );
+    const quuxMatch = quuxMatches[0];
+    const fooMatches = labelMatches.filter(match => match.labelName === 'foo');
+
+    expect(quuxMatches).toHaveLength(1);
+    expect(fooMatches).toHaveLength(2);
+    expect(fooMatches[0].score).toBeGreaterThan(quuxMatch.score);
+    expect(fooMatches[1].score).toBeGreaterThan(quuxMatch.score);
   });
 });

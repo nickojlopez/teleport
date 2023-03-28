@@ -339,10 +339,24 @@ function Labels(
 ) {
   const { searchResult } = props;
 
+  // Label name to score.
+  const scoreMap: Map<string, number> = new Map();
+  searchResult.labelMatches.forEach(match => {
+    const currentScore = scoreMap.get(match.labelName) || 0;
+    scoreMap.set(match.labelName, currentScore + match.score);
+  });
+
+  const sortedLabelsList = [...searchResult.resource.labelsList];
+  sortedLabelsList.sort(
+    (a, b) =>
+      // Highest score first.
+      (scoreMap.get(b.name) || 0) - (scoreMap.get(a.name) || 0)
+  );
+
   return (
     <LabelsFlex>
       {props.children}
-      {searchResult.resource.labelsList.map(label => (
+      {sortedLabelsList.map(label => (
         <Label
           key={label.name + label.value}
           searchResult={searchResult}

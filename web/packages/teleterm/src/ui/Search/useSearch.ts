@@ -111,6 +111,7 @@ function populateMatches(
           kind: 'label-name',
           labelName: label.name,
           searchTerm: term,
+          score: 0,
         });
       }
 
@@ -119,6 +120,7 @@ function populateMatches(
           kind: 'label-value',
           labelName: label.name,
           searchTerm: term,
+          score: 0,
         });
       }
     });
@@ -144,34 +146,42 @@ function populateMatches(
 // TODO(ravicious): Extract the scoring logic to a function to better illustrate different weight
 // for different matches.
 function calculateScore(searchResult: SearchResult): SearchResult {
-  let totalScore = 0;
+  let searchResultScore = 0;
 
-  for (const match of searchResult.labelMatches) {
+  const labelMatches = searchResult.labelMatches.map(match => {
     const { searchTerm } = match;
+    let labelMatchScore = 0;
+
     switch (match.kind) {
       case 'label-name': {
         const label = searchResult.resource.labelsList.find(
           label => label.name === match.labelName
         );
-        const score = Math.floor((searchTerm.length / label.name.length) * 100);
-        totalScore += score;
+
+        labelMatchScore = Math.floor(
+          (searchTerm.length / label.name.length) * 100
+        );
+        searchResultScore += labelMatchScore;
         break;
       }
       case 'label-value': {
         const label = searchResult.resource.labelsList.find(
           label => label.name === match.labelName
         );
-        const score = Math.floor(
+
+        labelMatchScore = Math.floor(
           (searchTerm.length / label.value.length) * 100
         );
-        totalScore += score;
+        searchResultScore += labelMatchScore;
         break;
       }
       default: {
         assertUnreachable(match.kind);
       }
     }
-  }
+
+    return { ...match, score: labelMatchScore };
+  });
 
   for (const match of searchResult.resourceMatches) {
     const { searchTerm } = match;
@@ -179,9 +189,11 @@ function calculateScore(searchResult: SearchResult): SearchResult {
     const isMainField = mainResourceField[searchResult.kind] === match.field;
     const weight = isMainField ? 4 : 2;
 
-    const score = Math.floor((searchTerm.length / field.length) * 100 * weight);
-    totalScore += score;
+    const resourceMatchScore = Math.floor(
+      (searchTerm.length / field.length) * 100 * weight
+    );
+    searchResultScore += resourceMatchScore;
   }
 
-  return { ...searchResult, score: totalScore };
+  return { ...searchResult, labelMatches, score: searchResultScore };
 }
