@@ -49,7 +49,7 @@ func TestRedshiftServerlessFetcher(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		inputClients  cloud.AWSClients
+		inputClients  *cloud.TestCloudClients
 		inputLabels   map[string]string
 		wantDatabases types.Databases
 	}{
@@ -105,7 +105,7 @@ func TestRedshiftServerlessFetcher(t *testing.T) {
 func makeRedshiftServerlessWorkgroup(t *testing.T, name, region string, labels map[string]string) (*redshiftserverless.Workgroup, types.Database) {
 	workgroup := mocks.RedshiftServerlessWorkgroup(name, region)
 	tags := libcloudaws.LabelsToTags[redshiftserverless.Tag](labels)
-	database, err := services.NewDatabaseFromRedshiftServerlessWorkgroup(workgroup, tags)
+	database, err := services.NewDatabaseFromRedshiftServerlessWorkgroup(workgroup, tags, testAssumeRole)
 	require.NoError(t, err)
 	return workgroup, database
 }
@@ -113,7 +113,7 @@ func makeRedshiftServerlessWorkgroup(t *testing.T, name, region string, labels m
 func makeRedshiftServerlessEndpoint(t *testing.T, workgroup *redshiftserverless.Workgroup, name, region string, labels map[string]string) (*redshiftserverless.EndpointAccess, types.Database) {
 	endpoint := mocks.RedshiftServerlessEndpointAccess(workgroup, name, region)
 	tags := libcloudaws.LabelsToTags[redshiftserverless.Tag](labels)
-	database, err := services.NewDatabaseFromRedshiftServerlessVPCEndpoint(endpoint, workgroup, tags)
+	database, err := services.NewDatabaseFromRedshiftServerlessVPCEndpoint(endpoint, workgroup, tags, testAssumeRole)
 	require.NoError(t, err)
 	return endpoint, database
 }

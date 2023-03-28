@@ -41,6 +41,8 @@ type redshiftServerlessFetcherConfig struct {
 	Region string
 	// Client is the Redshift Serverless API client.
 	Client redshiftserverlessiface.RedshiftServerlessAPI
+	// AssumeRole is the AWS IAM role to assume before discovering databases.
+	AssumeRole services.AssumeRole
 }
 
 // CheckAndSetDefaults validates the config and sets defaults.
@@ -83,6 +85,7 @@ func newRedshiftServerlessFetcher(config redshiftServerlessFetcherConfig) (commo
 			trace.Component: "watch:rss<", // (r)ed(s)hift (s)erver(<)less
 			"labels":        config.Labels,
 			"region":        config.Region,
+			"role":          config.AssumeRole,
 		}),
 	}, nil
 }
@@ -129,7 +132,7 @@ func (f *redshiftServerlessFetcher) getDatabasesFromWorkgroups(ctx context.Conte
 		}
 
 		tags := f.getResourceTags(ctx, workgroup.WorkgroupArn)
-		database, err := services.NewDatabaseFromRedshiftServerlessWorkgroup(workgroup, tags)
+		database, err := services.NewDatabaseFromRedshiftServerlessWorkgroup(workgroup, tags, f.cfg.AssumeRole)
 		if err != nil {
 			f.log.WithError(err).Infof("Could not convert Redshift Serverless workgroup %q to database resource.", aws.StringValue(workgroup.WorkgroupName))
 			continue
@@ -165,7 +168,7 @@ func (f *redshiftServerlessFetcher) getDatabasesFromVPCEndpoints(ctx context.Con
 
 		// VPC endpoints do not have resource tags attached to them. Use the
 		// tags from the workgroups instead.
-		database, err := services.NewDatabaseFromRedshiftServerlessVPCEndpoint(endpoint, workgroup.Workgroup, workgroup.Tags)
+		database, err := services.NewDatabaseFromRedshiftServerlessVPCEndpoint(endpoint, workgroup.Workgroup, workgroup.Tags, f.cfg.AssumeRole)
 		if err != nil {
 			f.log.WithError(err).Infof("Could not convert Redshift Serverless endpoint %q to database resource.", aws.StringValue(endpoint.EndpointName))
 			continue

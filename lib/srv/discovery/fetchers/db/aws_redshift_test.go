@@ -40,7 +40,7 @@ func TestRedshiftFetcher(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		inputClients  cloud.AWSClients
+		inputClients  *cloud.TestCloudClients
 		inputLabels   map[string]string
 		wantDatabases types.Databases
 	}{
@@ -105,7 +105,7 @@ func makeRedshiftCluster(t *testing.T, region, env string, opts ...func(*redshif
 		opt(cluster)
 	}
 
-	database, err := services.NewDatabaseFromRedshiftCluster(cluster)
+	database, err := services.NewDatabaseFromRedshiftCluster(cluster, testAssumeRole)
 	require.NoError(t, err)
 	return cluster, database
 }

@@ -39,6 +39,8 @@ type memoryDBFetcherConfig struct {
 	MemoryDB memorydbiface.MemoryDBAPI
 	// Region is the AWS region to query databases in.
 	Region string
+	// AssumeRole is the AWS IAM role to assume before discovering databases.
+	AssumeRole services.AssumeRole
 }
 
 // CheckAndSetDefaults validates the config and sets defaults.
@@ -74,6 +76,7 @@ func newMemoryDBFetcher(config memoryDBFetcherConfig) (common.Fetcher, error) {
 			trace.Component: "watch:memorydb",
 			"labels":        config.Labels,
 			"region":        config.Region,
+			"role":          config.AssumeRole,
 		}),
 	}, nil
 }
@@ -129,7 +132,7 @@ func (f *memoryDBFetcher) Get(ctx context.Context) (types.ResourcesWithLabels, e
 		}
 
 		extraLabels := services.ExtraMemoryDBLabels(cluster, tags, allSubnetGroups)
-		database, err := services.NewDatabaseFromMemoryDBCluster(cluster, extraLabels)
+		database, err := services.NewDatabaseFromMemoryDBCluster(cluster, extraLabels, f.cfg.AssumeRole)
 		if err != nil {
 			f.log.WithError(err).Infof("Could not convert memorydb cluster %q configuration endpoint to database resource.", aws.StringValue(cluster.Name))
 		} else {

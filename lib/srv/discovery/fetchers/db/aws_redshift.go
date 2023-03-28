@@ -40,6 +40,8 @@ type redshiftFetcherConfig struct {
 	Redshift redshiftiface.RedshiftAPI
 	// Region is the AWS region to query databases in.
 	Region string
+	// AssumeRole is the AWS IAM role to assume before discovering databases.
+	AssumeRole services.AssumeRole
 }
 
 // CheckAndSetDefaults validates the config and sets defaults.
@@ -75,6 +77,7 @@ func newRedshiftFetcher(config redshiftFetcherConfig) (common.Fetcher, error) {
 			trace.Component: "watch:redshift",
 			"labels":        config.Labels,
 			"region":        config.Region,
+			"role":          config.AssumeRole,
 		}),
 	}, nil
 }
@@ -95,7 +98,7 @@ func (f *redshiftFetcher) Get(ctx context.Context) (types.ResourcesWithLabels, e
 			continue
 		}
 
-		database, err := services.NewDatabaseFromRedshiftCluster(cluster)
+		database, err := services.NewDatabaseFromRedshiftCluster(cluster, f.cfg.AssumeRole)
 		if err != nil {
 			f.log.Infof("Could not convert Redshift cluster %q to database resource: %v.",
 				aws.StringValue(cluster.ClusterIdentifier), err)

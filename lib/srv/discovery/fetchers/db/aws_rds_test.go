@@ -57,7 +57,7 @@ func TestRDSFetchers(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		inputClients  cloud.AWSClients
+		inputClients  *cloud.TestCloudClients
 		inputMatchers []services.AWSMatcher
 		wantDatabases types.Databases
 	}{
@@ -212,6 +212,7 @@ func TestRDSFetchers(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
+			mustAddAssumedRolesAndMockSessionsForMatchers(t, test.inputMatchers, test.inputClients)
 			fetchers := mustMakeAWSFetchers(t, test.inputClients, test.inputMatchers)
 			require.ElementsMatch(t, test.wantDatabases, mustGetDatabases(t, fetchers))
 		})
@@ -235,7 +236,7 @@ func makeRDSInstance(t *testing.T, name, region string, labels map[string]string
 		opt(instance)
 	}
 
-	database, err := services.NewDatabaseFromRDSInstance(instance)
+	database, err := services.NewDatabaseFromRDSInstance(instance, testAssumeRole)
 	require.NoError(t, err)
 	return instance, database
 }
@@ -259,7 +260,7 @@ func makeRDSCluster(t *testing.T, name, region string, labels map[string]string,
 		opt(cluster)
 	}
 
-	database, err := services.NewDatabaseFromRDSCluster(cluster)
+	database, err := services.NewDatabaseFromRDSCluster(cluster, testAssumeRole)
 	require.NoError(t, err)
 	return cluster, database
 }
@@ -292,16 +293,16 @@ func makeRDSClusterWithExtraEndpoints(t *testing.T, name, region string, labels 
 			IsClusterWriter: aws.Bool(true), // Add writer.
 		})
 
-		primaryDatabase, err := services.NewDatabaseFromRDSCluster(cluster)
+		primaryDatabase, err := services.NewDatabaseFromRDSCluster(cluster, testAssumeRole)
 		require.NoError(t, err)
 		databases = append(databases, primaryDatabase)
 	}
 
-	readerDatabase, err := services.NewDatabaseFromRDSClusterReaderEndpoint(cluster)
+	readerDatabase, err := services.NewDatabaseFromRDSClusterReaderEndpoint(cluster, testAssumeRole)
 	require.NoError(t, err)
 	databases = append(databases, readerDatabase)
 
-	customDatabases, err := services.NewDatabasesFromRDSClusterCustomEndpoints(cluster)
+	customDatabases, err := services.NewDatabasesFromRDSClusterCustomEndpoints(cluster, testAssumeRole)
 	require.NoError(t, err)
 	databases = append(databases, customDatabases...)
 

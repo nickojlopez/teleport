@@ -50,7 +50,7 @@ func TestElastiCacheFetcher(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		inputClients  cloud.AWSClients
+		inputClients  *cloud.TestCloudClients
 		inputLabels   map[string]string
 		wantDatabases types.Databases
 	}{
@@ -138,12 +138,12 @@ func makeElastiCacheCluster(t *testing.T, name, region, env string, opts ...func
 	extraLabels := services.ExtraElastiCacheLabels(cluster, tags, nil, nil)
 
 	if aws.BoolValue(cluster.ClusterEnabled) {
-		database, err := services.NewDatabaseFromElastiCacheConfigurationEndpoint(cluster, extraLabels)
+		database, err := services.NewDatabaseFromElastiCacheConfigurationEndpoint(cluster, extraLabels, testAssumeRole)
 		require.NoError(t, err)
 		return cluster, database, tags
 	}
 
-	databases, err := services.NewDatabasesFromElastiCacheNodeGroups(cluster, extraLabels)
+	databases, err := services.NewDatabasesFromElastiCacheNodeGroups(cluster, extraLabels, testAssumeRole)
 	require.NoError(t, err)
 	require.Len(t, databases, 1)
 	return cluster, databases[0], tags

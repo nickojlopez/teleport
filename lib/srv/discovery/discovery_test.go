@@ -34,16 +34,20 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v2"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/eks/eksiface"
+	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/redshift"
 	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/aws/aws-sdk-go/service/ssm/ssmiface"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
@@ -918,9 +922,24 @@ func (m *mockGKEAPI) ListClusters(ctx context.Context, projectID string, locatio
 
 func TestDiscoveryDatabase(t *testing.T) {
 	awsRedshiftResource, awsRedshiftDB := makeRedshiftCluster(t, "aws-redshift", "us-east-1")
+	role := services.AssumeRole{RoleARN: "arn:aws:iam::123456789012:role/test-role", ExternalID: "test123"}
+	awsRDSInstance, awsRDSDB := makeRDSInstance(t, "aws-rds", "us-west-1", role)
 	azRedisResource, azRedisDB := makeAzureRedisServer(t, "az-redis", "sub1", "group1", "East US")
 
 	testClients := &cloud.TestCloudClients{
+		AWSAssumeRoleSessions: map[string]*session.Session{
+			"us-west-1:Role[0]:ARN[arn:aws:iam::123456789012:role/test-role]:ExternalID[test123]": session.Must(
+				session.NewSession(&aws.Config{
+					Credentials: credentials.AnonymousCredentials,
+					Region:      aws.String("us-west-1"),
+				})),
+		},
+		RDS: &mocks.RDSMock{
+			DBInstances: []*rds.DBInstance{awsRDSInstance},
+			DBEngineVersions: []*rds.DBEngineVersion{
+				{Engine: aws.String(services.RDSEnginePostgres)},
+			},
+		},
 		Redshift: &mocks.RedshiftMock{
 			Clusters: []*redshift.Cluster{awsRedshiftResource},
 		},
@@ -948,6 +967,16 @@ func TestDiscoveryDatabase(t *testing.T) {
 				Regions: []string{"us-east-1"},
 			}},
 			expectDatabases: []types.Database{awsRedshiftDB},
+		},
+		{
+			name: "discover AWS database with assumed role",
+			awsMatchers: []services.AWSMatcher{{
+				Types:      []string{services.AWSMatcherRDS},
+				Tags:       map[string]utils.Strings{types.Wildcard: {types.Wildcard}},
+				Regions:    []string{"us-west-1"},
+				AssumeRole: role,
+			}},
+			expectDatabases: []types.Database{awsRDSDB},
 		},
 		{
 			name: "discover Azure database",
@@ -978,6 +1007,26 @@ func TestDiscoveryDatabase(t *testing.T) {
 				Regions: []string{"us-east-1"},
 			}},
 			expectDatabases: []types.Database{awsRedshiftDB},
+		},
+		{
+			name: "update existing database with assumed role",
+			existingDatabases: []types.Database{
+				mustNewDatabase(t, types.Metadata{
+					Name:        "aws-rds",
+					Description: "should be updated",
+					Labels:      map[string]string{types.OriginLabel: types.OriginCloud},
+				}, types.DatabaseSpecV3{
+					Protocol: "postgres",
+					URI:      "should.be.updated.com:12345",
+				}),
+			},
+			awsMatchers: []services.AWSMatcher{{
+				Types:      []string{services.AWSMatcherRDS},
+				Tags:       map[string]utils.Strings{types.Wildcard: {types.Wildcard}},
+				Regions:    []string{"us-west-1"},
+				AssumeRole: role,
+			}},
+			expectDatabases: []types.Database{awsRDSDB},
 		},
 		{
 			name: "delete existing database",
@@ -1091,6 +1140,24 @@ func TestDiscoveryDatabase(t *testing.T) {
 	}
 }
 
+func makeRDSInstance(t *testing.T, name, region string, role services.AssumeRole) (*rds.DBInstance, types.Database) {
+	instance := &rds.DBInstance{
+		DBInstanceArn:        aws.String(fmt.Sprintf("arn:aws:rds:%v:123456789012:db:%v", region, name)),
+		DBInstanceIdentifier: aws.String(name),
+		DbiResourceId:        aws.String(uuid.New().String()),
+		Engine:               aws.String(services.RDSEnginePostgres),
+		DBInstanceStatus:     aws.String("available"),
+		Endpoint: &rds.Endpoint{
+			Address: aws.String("localhost"),
+			Port:    aws.Int64(5432),
+		},
+	}
+
+	database, err := services.NewDatabaseFromRDSInstance(instance, role)
+	require.NoError(t, err)
+	return instance, database
+}
+
 func makeRedshiftCluster(t *testing.T, name, region string) (*redshift.Cluster, types.Database) {
 	t.Helper()
 	cluster := &redshift.Cluster{
@@ -1103,7 +1170,7 @@ func makeRedshiftCluster(t *testing.T, name, region string) (*redshift.Cluster, 
 		},
 	}
 
-	database, err := services.NewDatabaseFromRedshiftCluster(cluster)
+	database, err := services.NewDatabaseFromRedshiftCluster(cluster, services.AssumeRole{})
 	require.NoError(t, err)
 	database.SetOrigin(types.OriginCloud)
 	return cluster, database

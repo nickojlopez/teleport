@@ -49,7 +49,7 @@ func TestMemoryDBFetcher(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		inputClients  cloud.AWSClients
+		inputClients  *cloud.TestCloudClients
 		inputLabels   map[string]string
 		wantDatabases types.Databases
 	}{
@@ -132,7 +132,7 @@ func makeMemoryDBCluster(t *testing.T, name, region, env string, opts ...func(*m
 	}}
 	extraLabels := services.ExtraMemoryDBLabels(cluster, tags, nil)
 
-	database, err := services.NewDatabaseFromMemoryDBCluster(cluster, extraLabels)
+	database, err := services.NewDatabaseFromMemoryDBCluster(cluster, extraLabels, testAssumeRole)
 	require.NoError(t, err)
 	return cluster, database, tags
 }

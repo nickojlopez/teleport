@@ -38,14 +38,6 @@ func TestRDSDBProxyFetcher(t *testing.T) {
 	rdsProxyEndpointVpc1, rdsProxyEndpointDatabaseVpc1 := makeRDSProxyCustomEndpoint(t, rdsProxyVpc1, "endpoint-1", "us-east-1")
 	rdsProxyEndpointVpc2, rdsProxyEndpointDatabaseVpc2 := makeRDSProxyCustomEndpoint(t, rdsProxyVpc2, "endpoint-2", "us-east-1")
 
-	clients := &cloud.TestCloudClients{
-		RDS: &mocks.RDSMock{
-			DBProxies:         []*rds.DBProxy{rdsProxyVpc1, rdsProxyVpc2},
-			DBProxyEndpoints:  []*rds.DBProxyEndpoint{rdsProxyEndpointVpc1, rdsProxyEndpointVpc2},
-			DBProxyTargetPort: 9999,
-		},
-	}
-
 	tests := []struct {
 		name          string
 		inputLabels   map[string]string
@@ -68,6 +60,13 @@ func TestRDSDBProxyFetcher(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
+			clients := &cloud.TestCloudClients{
+				RDS: &mocks.RDSMock{
+					DBProxies:         []*rds.DBProxy{rdsProxyVpc1, rdsProxyVpc2},
+					DBProxyEndpoints:  []*rds.DBProxyEndpoint{rdsProxyEndpointVpc1, rdsProxyEndpointVpc2},
+					DBProxyTargetPort: 9999,
+				},
+			}
 			fetchers := mustMakeAWSFetchersForMatcher(t, clients, services.AWSMatcherRDSProxy, "us-east-2", toTypeLabels(test.inputLabels))
 			require.ElementsMatch(t, test.wantDatabases, mustGetDatabases(t, fetchers))
 		})
@@ -85,7 +84,7 @@ func makeRDSProxy(t *testing.T, name, region, vpcID string) (*rds.DBProxy, types
 		Status:       aws.String("available"),
 	}
 
-	rdsProxyDatabase, err := services.NewDatabaseFromRDSProxy(rdsProxy, 9999, nil)
+	rdsProxyDatabase, err := services.NewDatabaseFromRDSProxy(rdsProxy, 9999, nil, testAssumeRole)
 	require.NoError(t, err)
 	return rdsProxy, rdsProxyDatabase
 }
@@ -99,7 +98,7 @@ func makeRDSProxyCustomEndpoint(t *testing.T, rdsProxy *rds.DBProxy, name, regio
 		TargetRole:          aws.String(rds.DBProxyEndpointTargetRoleReadOnly),
 		Status:              aws.String("available"),
 	}
-	rdsProxyEndpointDatabase, err := services.NewDatabaseFromRDSProxyCustomEndpoint(rdsProxy, rdsProxyEndpoint, 9999, nil)
+	rdsProxyEndpointDatabase, err := services.NewDatabaseFromRDSProxyCustomEndpoint(rdsProxy, rdsProxyEndpoint, 9999, nil, testAssumeRole)
 	require.NoError(t, err)
 	return rdsProxyEndpoint, rdsProxyEndpointDatabase
 }

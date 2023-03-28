@@ -20,6 +20,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gravitational/teleport/api/types"
@@ -57,14 +60,16 @@ func mustMakeAWSFetchers(t *testing.T, clients cloud.AWSClients, matchers []serv
 	return fetchers
 }
 
-func mustMakeAWSFetchersForMatcher(t *testing.T, clients cloud.AWSClients, matcherType, region string, tags types.Labels) []common.Fetcher {
+func mustMakeAWSFetchersForMatcher(t *testing.T, clients *cloud.TestCloudClients, matcherType, region string, tags types.Labels) []common.Fetcher {
 	t.Helper()
-
-	return mustMakeAWSFetchers(t, clients, []services.AWSMatcher{{
-		Types:   []string{matcherType},
-		Regions: []string{region},
-		Tags:    tags,
-	}})
+	matchers := []services.AWSMatcher{{
+		Types:      []string{matcherType},
+		Regions:    []string{region},
+		Tags:       tags,
+		AssumeRole: testAssumeRole,
+	}}
+	mustAddAssumedRolesAndMockSessionsForMatchers(t, matchers, clients)
+	return mustMakeAWSFetchers(t, clients, matchers)
 }
 
 func mustMakeAzureFetchers(t *testing.T, clients cloud.AzureClients, matchers []services.AzureMatcher) []common.Fetcher {
@@ -95,4 +100,48 @@ func mustGetDatabases(t *testing.T, fetchers []common.Fetcher) types.Databases {
 		all = append(all, databases...)
 	}
 	return all
+}
+
+// testAssumeRole is a fixture for testing fetchers.
+// every matcher, stub database, and mock AWS Session created uses this fixture.
+// Tests will cover:
+//   - that fetchers use the configured assume role when using AWS cloud clients.
+//   - that databases discovered and created by fetchers have the assumed role used to discover them populated.
+var testAssumeRole = services.AssumeRole{
+	RoleARN:    "arn:aws:iam::123456789012:role/test-role",
+	ExternalID: "externalID123",
+}
+
+// mustAddAssumedRolesAndMockSessionsForMatchers injects a test assume role and injects
+// mock AWS sessions for the assumed role into test cloud clients.
+func mustAddAssumedRolesAndMockSessionsForMatchers(t *testing.T, matchers []services.AWSMatcher, clients *cloud.TestCloudClients) {
+	t.Helper()
+	// configure all the test matchers to have an assumed role and inject mock AWS sessions into cloud clients for them.
+	awsSessions := make(map[string]*session.Session)
+	for i := range matchers {
+		matchers[i].AssumeRole = testAssumeRole
+		for _, region := range matchers[i].Regions {
+			cacheKey, session := makeAWSSession(t, region, testAssumeRole)
+			awsSessions[cacheKey] = session
+		}
+	}
+	clients.AWSAssumeRoleSessions = awsSessions
+}
+
+// makeAWSSession is a test helper to build a mock cached aws session for a given assume role chain.
+func makeAWSSession(t *testing.T, region string, roles ...services.AssumeRole) (string, *session.Session) {
+	t.Helper()
+	awsSession, err := session.NewSession(&aws.Config{
+		Credentials: credentials.NewCredentials(&credentials.StaticProvider{Value: credentials.Value{
+			AccessKeyID:     "fakeClientKeyID",
+			SecretAccessKey: "fakeClientSecret",
+		}}),
+		Region: aws.String(region),
+	})
+	require.NoError(t, err)
+	keyBuilder := cloud.NewAWSSessionCacheKeyBuilder(region)
+	for i := range roles {
+		keyBuilder.AddRole(roles[i])
+	}
+	return keyBuilder.String(), awsSession
 }

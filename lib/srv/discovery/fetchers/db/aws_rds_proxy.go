@@ -48,6 +48,7 @@ func newRDSDBProxyFetcher(config rdsFetcherConfig) (common.Fetcher, error) {
 			trace.Component: "watch:rdsproxy",
 			"labels":        config.Labels,
 			"region":        config.Region,
+			"role":          config.AssumeRole,
 		}),
 	}, nil
 }
@@ -118,7 +119,7 @@ func (f *rdsDBProxyFetcher) getRDSProxyDatabases(ctx context.Context) (types.Dat
 		}
 
 		// Add a database from RDS Proxy (default endpoint).
-		database, err := services.NewDatabaseFromRDSProxy(dbProxy, port, tags)
+		database, err := services.NewDatabaseFromRDSProxy(dbProxy, port, tags, f.cfg.AssumeRole)
 		if err != nil {
 			f.log.Debugf("Could not convert RDS Proxy %q to database resource: %v.",
 				aws.StringValue(dbProxy.DBProxyName), err)
@@ -136,7 +137,7 @@ func (f *rdsDBProxyFetcher) getRDSProxyDatabases(ctx context.Context) (types.Dat
 				continue
 			}
 
-			database, err = services.NewDatabaseFromRDSProxyCustomEndpoint(dbProxy, customEndpoint, port, tags)
+			database, err = services.NewDatabaseFromRDSProxyCustomEndpoint(dbProxy, customEndpoint, port, tags, f.cfg.AssumeRole)
 			if err != nil {
 				f.log.Debugf("Could not convert custom endpoint %q of RDS Proxy %q to database resource: %v.",
 					aws.StringValue(customEndpoint.DBProxyEndpointName),

@@ -41,6 +41,8 @@ type rdsFetcherConfig struct {
 	RDS rdsiface.RDSAPI
 	// Region is the AWS region to query databases in.
 	Region string
+	// AssumeRole is the AWS IAM role to assume before discovering databases.
+	AssumeRole services.AssumeRole
 }
 
 // CheckAndSetDefaults validates the config and sets defaults.
@@ -76,6 +78,7 @@ func newRDSDBInstancesFetcher(config rdsFetcherConfig) (common.Fetcher, error) {
 			trace.Component: "watch:rds",
 			"labels":        config.Labels,
 			"region":        config.Region,
+			"role":          config.AssumeRole,
 		}),
 	}, nil
 }
@@ -113,7 +116,7 @@ func (f *rdsDBInstancesFetcher) getRDSDatabases(ctx context.Context) (types.Data
 			continue
 		}
 
-		database, err := services.NewDatabaseFromRDSInstance(instance)
+		database, err := services.NewDatabaseFromRDSInstance(instance, f.cfg.AssumeRole)
 		if err != nil {
 			f.log.Warnf("Could not convert RDS instance %q to database resource: %v.",
 				aws.StringValue(instance.DBInstanceIdentifier), err)
@@ -172,6 +175,7 @@ func newRDSAuroraClustersFetcher(config rdsFetcherConfig) (common.Fetcher, error
 			trace.Component: "watch:aurora",
 			"labels":        config.Labels,
 			"region":        config.Region,
+			"role":          config.AssumeRole,
 		}),
 	}, nil
 }
@@ -226,7 +230,7 @@ func (f *rdsAuroraClustersFetcher) getAuroraDatabases(ctx context.Context) (type
 
 		// Add a database from primary endpoint, if any writer instances.
 		if cluster.Endpoint != nil && hasWriterInstance {
-			database, err := services.NewDatabaseFromRDSCluster(cluster)
+			database, err := services.NewDatabaseFromRDSCluster(cluster, f.cfg.AssumeRole)
 			if err != nil {
 				f.log.Warnf("Could not convert RDS cluster %q to database resource: %v.",
 					aws.StringValue(cluster.DBClusterIdentifier), err)
@@ -238,7 +242,7 @@ func (f *rdsAuroraClustersFetcher) getAuroraDatabases(ctx context.Context) (type
 		// Add a database from reader endpoint, if any reader instances.
 		// https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.Overview.Endpoints.html#Aurora.Endpoints.Reader
 		if cluster.ReaderEndpoint != nil && hasReaderInstance {
-			database, err := services.NewDatabaseFromRDSClusterReaderEndpoint(cluster)
+			database, err := services.NewDatabaseFromRDSClusterReaderEndpoint(cluster, f.cfg.AssumeRole)
 			if err != nil {
 				f.log.Warnf("Could not convert RDS cluster %q reader endpoint to database resource: %v.",
 					aws.StringValue(cluster.DBClusterIdentifier), err)
@@ -249,7 +253,7 @@ func (f *rdsAuroraClustersFetcher) getAuroraDatabases(ctx context.Context) (type
 
 		// Add databases from custom endpoints
 		if len(cluster.CustomEndpoints) > 0 {
-			customEndpointDatabases, err := services.NewDatabasesFromRDSClusterCustomEndpoints(cluster)
+			customEndpointDatabases, err := services.NewDatabasesFromRDSClusterCustomEndpoints(cluster, f.cfg.AssumeRole)
 			if err != nil {
 				f.log.Warnf("Could not convert RDS cluster %q custom endpoints to database resources: %v.",
 					aws.StringValue(cluster.DBClusterIdentifier), err)
