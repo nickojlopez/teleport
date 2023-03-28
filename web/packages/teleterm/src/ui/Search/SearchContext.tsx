@@ -24,26 +24,54 @@ import React, {
   MutableRefObject,
 } from 'react';
 
+import { RootClusterUri } from 'teleterm/ui/uri';
+
 import { actionPicker, SearchPicker } from './pickers/pickers';
 
-const SearchContext =
-  createContext<{
-    inputRef: MutableRefObject<HTMLInputElement>;
-    inputValue: string;
-    onInputValueChange(value: string): void;
-    changeActivePicker(picker: SearchPicker): void;
-    activePicker: SearchPicker;
-    close(): void;
-    closeAndResetInput(): void;
-    open(): void;
-    opened: boolean;
-  }>(null);
+export interface SearchContext {
+  inputRef: MutableRefObject<HTMLInputElement>;
+  inputValue: string;
+  opened: boolean;
+  searchFilters: SearchFilter[];
+  activePicker: SearchPicker;
+
+  onInputValueChange(value: string): void;
+
+  changeActivePicker(picker: SearchPicker): void;
+
+  close(): void;
+
+  closeAndResetInput(): void;
+
+  open(): void;
+
+  resetInput(): void;
+
+  setSearchFilter(filter: SearchFilter): void;
+
+  removeSearchFilter(filter: SearchFilter): void;
+}
+
+export interface ResourceTypeSearchFilter {
+  filter: 'resource-type';
+  resourceType: 'kubes' | 'servers' | 'databases';
+}
+
+export interface ClusterSearchFilter {
+  filter: 'cluster';
+  rootClusterUri: RootClusterUri;
+}
+
+export type SearchFilter = ResourceTypeSearchFilter | ClusterSearchFilter;
+
+const SearchContext = createContext<SearchContext>(null);
 
 export const SearchContextProvider: FC = props => {
   const inputRef = useRef<HTMLInputElement>();
   const [opened, setOpened] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [activePicker, setActivePicker] = useState(actionPicker);
+  const [searchFilters, setSearchFilters] = useState<SearchFilter[]>([]);
 
   function changeActivePicker(picker: SearchPicker): void {
     setActivePicker(picker);
@@ -60,8 +88,31 @@ export const SearchContextProvider: FC = props => {
     setInputValue('');
   }, [close]);
 
+  const resetInput = useCallback(() => {
+    setInputValue('');
+  }, []);
+
   function open(): void {
     setOpened(true);
+    inputRef.current?.focus();
+  }
+
+  function setSearchFilter(filter: SearchFilter) {
+    // UI prevents adding more than one filter of the same type
+    setSearchFilters(prevState => [...prevState, filter]);
+    inputRef.current?.focus();
+  }
+
+  function removeSearchFilter(filter: SearchFilter) {
+    setSearchFilters(prevState => {
+      const index = prevState.indexOf(filter);
+      if (index >= 0) {
+        const copied = [...prevState];
+        copied.splice(index, 1);
+        return copied;
+      }
+      return prevState;
+    });
     inputRef.current?.focus();
   }
 
@@ -73,8 +124,12 @@ export const SearchContextProvider: FC = props => {
         onInputValueChange: setInputValue,
         changeActivePicker,
         activePicker,
+        searchFilters,
+        setSearchFilter,
+        removeSearchFilter,
         close,
         closeAndResetInput,
+        resetInput,
         opened,
         open,
       }}

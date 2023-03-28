@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { ResourceTypeSearchFilter } from 'teleterm/ui/Search/SearchContext';
+
 import type * as types from 'teleterm/services/tshd/types';
 import type * as uri from 'teleterm/ui/uri';
 
@@ -69,30 +71,42 @@ export class ResourcesService {
    */
   async searchResources(
     clusterUri: uri.ClusterUri,
-    search: string
+    search: string,
+    searchFilter: ResourceTypeSearchFilter | undefined
   ): Promise<SearchResult[]> {
     const params = { search, clusterUri, sort: null, limit: 100 };
 
-    const servers = this.fetchServers(params).then(res =>
-      res.agentsList.map(resource => ({
-        kind: 'server' as const,
-        resource,
-      }))
-    );
-    const databases = this.fetchDatabases(params).then(res =>
-      res.agentsList.map(resource => ({
-        kind: 'database' as const,
-        resource,
-      }))
-    );
-    const kubes = this.fetchKubes(params).then(res =>
-      res.agentsList.map(resource => ({
-        kind: 'kube' as const,
-        resource,
-      }))
-    );
+    const getServers = () =>
+      this.fetchServers(params).then(res =>
+        res.agentsList.map(resource => ({
+          kind: 'server' as const,
+          resource,
+        }))
+      );
+    const getDatabases = () =>
+      this.fetchDatabases(params).then(res =>
+        res.agentsList.map(resource => ({
+          kind: 'database' as const,
+          resource,
+        }))
+      );
+    const getKubes = () =>
+      this.fetchKubes(params).then(res =>
+        res.agentsList.map(resource => ({
+          kind: 'kube' as const,
+          resource,
+        }))
+      );
 
-    return (await Promise.all([servers, databases, kubes])).flat();
+    const promises = searchFilter
+      ? [
+          searchFilter.resourceType === 'servers' && getServers(),
+          searchFilter.resourceType === 'databases' && getDatabases(),
+          searchFilter.resourceType === 'kubes' && getKubes(),
+        ].filter(Boolean)
+      : [getServers(), getDatabases(), getKubes()];
+
+    return (await Promise.all(promises)).flat();
   }
 }
 

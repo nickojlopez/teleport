@@ -14,28 +14,51 @@
  * limitations under the License.
  */
 
+import type { Cluster } from 'teleterm/services/tshd/types';
+
 import type * as resourcesServiceTypes from 'teleterm/ui/services/resources';
 import type { SearchResultResource } from 'teleterm/ui/services/resources';
 
 export { SearchResultResource };
 
-type SearchResultBase<Result extends resourcesServiceTypes.SearchResult> =
-  Result & {
-    labelMatches: LabelMatch[];
-    resourceMatches: ResourceMatch<Result['kind']>[];
-    score: number;
-  };
+type ResourceSearchResultBase<
+  Result extends resourcesServiceTypes.SearchResult
+> = Result & {
+  labelMatches: LabelMatch[];
+  resourceMatches: ResourceMatch<Result['kind']>[];
+  score: number;
+};
 
 export type SearchResultServer =
-  SearchResultBase<resourcesServiceTypes.SearchResultServer>;
+  ResourceSearchResultBase<resourcesServiceTypes.SearchResultServer>;
 export type SearchResultDatabase =
-  SearchResultBase<resourcesServiceTypes.SearchResultDatabase>;
+  ResourceSearchResultBase<resourcesServiceTypes.SearchResultDatabase>;
 export type SearchResultKube =
-  SearchResultBase<resourcesServiceTypes.SearchResultKube>;
-export type SearchResult =
+  ResourceSearchResultBase<resourcesServiceTypes.SearchResultKube>;
+export type SearchResultCluster = {
+  kind: 'cluster-filter';
+  resource: Cluster;
+  nameMatch: string;
+  score: number;
+};
+export type SearchResultResourceType = {
+  kind: 'resource-type-filter';
+  resource: 'kubes' | 'servers' | 'databases';
+  nameMatch: string;
+  score: number;
+};
+
+// TODO(gzdunek): find a better name.
+// `ResourcesService` exports `SearchResult` which is then usually imported as `ResourceSearchResult`.
+// Having these two thing named almost the same is confusing.
+export type ResourceSearchResult =
   | SearchResultServer
   | SearchResultDatabase
   | SearchResultKube;
+
+export type FilterSearchResult = SearchResultResourceType | SearchResultCluster;
+
+export type SearchResult = ResourceSearchResult | FilterSearchResult;
 
 export type LabelMatch = {
   kind: 'label-name' | 'label-value';
@@ -45,20 +68,20 @@ export type LabelMatch = {
   score: number;
 };
 
-export type ResourceMatch<Kind extends SearchResult['kind']> = {
-  field: typeof searchableFields[Kind][number];
+export type ResourceMatch<Kind extends ResourceSearchResult['kind']> = {
+  field: (typeof searchableFields)[Kind][number];
   searchTerm: string;
 };
 
 /**
  * mainResourceName returns the main identifier for the given resource displayed in the UI.
  */
-export function mainResourceName(searchResult: SearchResult): string {
+export function mainResourceName(searchResult: ResourceSearchResult): string {
   return searchResult.resource[mainResourceField[searchResult.kind]];
 }
 
 export const mainResourceField: {
-  [Kind in SearchResult['kind']]: keyof SearchResultResource<Kind>;
+  [Kind in ResourceSearchResult['kind']]: keyof SearchResultResource<Kind>;
 } = {
   server: 'hostname',
   database: 'name',
@@ -68,7 +91,7 @@ export const mainResourceField: {
 // The usage of Exclude here is a workaround to make sure that the fields in the array point only to
 // fields of string type.
 export const searchableFields: {
-  [Kind in SearchResult['kind']]: ReadonlyArray<
+  [Kind in ResourceSearchResult['kind']]: ReadonlyArray<
     Exclude<keyof SearchResultResource<Kind>, 'labelsList'>
   >;
 } = {

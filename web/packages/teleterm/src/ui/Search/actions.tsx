@@ -18,16 +18,20 @@ import { IAppContext } from 'teleterm/ui/types';
 import { routing } from 'teleterm/ui/uri';
 import { GatewayProtocol } from 'teleterm/services/tshd/types';
 import { SearchResult } from 'teleterm/ui/Search/searchResult';
+import { SearchContext } from 'teleterm/ui/Search/SearchContext';
 
 export interface SimpleAction {
   type: 'simple-action';
   searchResult: SearchResult;
+  preventAutoClose?: boolean; // TODO(gzdunek): consider other options (callback preventClose() in perform?)
 
   perform(): void;
 }
+
 export interface ParametrizedAction {
   type: 'parametrized-action';
   searchResult: SearchResult;
+  preventAutoClose?: boolean;
   parameter: {
     getSuggestions(): Promise<string[]>;
     placeholder: string;
@@ -40,6 +44,7 @@ export type SearchAction = SimpleAction | ParametrizedAction;
 
 export function mapToActions(
   ctx: IAppContext,
+  searchContext: SearchContext,
   searchResults: SearchResult[]
 ): SearchAction[] {
   return searchResults.map(result => {
@@ -110,6 +115,32 @@ export function mapToActions(
             documentsService.add(doc);
             documentsService.open(doc.uri);
           }
+        },
+      };
+    }
+    if (result.kind === 'resource-type-filter') {
+      return {
+        type: 'simple-action',
+        searchResult: result,
+        preventAutoClose: true,
+        perform() {
+          searchContext.setSearchFilter({
+            filter: 'resource-type',
+            resourceType: result.resource,
+          });
+        },
+      };
+    }
+    if (result.kind === 'cluster-filter') {
+      return {
+        type: 'simple-action',
+        searchResult: result,
+        preventAutoClose: true,
+        perform() {
+          searchContext.setSearchFilter({
+            filter: 'cluster',
+            rootClusterUri: result.resource.uri,
+          });
         },
       };
     }

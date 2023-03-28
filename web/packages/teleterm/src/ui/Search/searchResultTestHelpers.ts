@@ -1,4 +1,4 @@
-import { SearchResult } from './searchResult';
+import { ResourceSearchResult } from './searchResult';
 
 import type * as tsh from 'teleterm/services/tshd/types';
 
@@ -35,11 +35,11 @@ export const makeLabelsList = (labels: Record<string, string>): tsh.Label[] =>
   Object.entries(labels).map(([name, value]) => ({ name, value }));
 
 export const makeResult = (
-  props: Partial<SearchResult> & {
-    kind: SearchResult['kind'];
-    resource: SearchResult['resource'];
+  props: Partial<ResourceSearchResult> & {
+    kind: ResourceSearchResult['kind'];
+    resource: ResourceSearchResult['resource'];
   }
-): SearchResult => ({
+): ResourceSearchResult => ({
   score: 0,
   labelMatches: [],
   resourceMatches: [],

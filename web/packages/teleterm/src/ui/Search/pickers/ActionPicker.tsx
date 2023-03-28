@@ -14,58 +14,47 @@
  * limitations under the License.
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback } from 'react';
 import styled from 'styled-components';
 import { Box, Flex, Label as DesignLabel, Text } from 'design';
 import * as icons from 'design/Icon';
-import { makeEmptyAttempt, useAsync, mapAttempt } from 'shared/hooks/useAsync';
 import { Highlight } from 'shared/components/Highlight';
 
-import Logger from 'teleterm/logger';
 import { useAppContext } from 'teleterm/ui/appContextProvider';
 import {
   ResourceMatch,
   SearchResult,
+  ResourceSearchResult,
   SearchResultDatabase,
   SearchResultKube,
   SearchResultServer,
+  SearchResultCluster,
+  SearchResultResourceType,
 } from 'teleterm/ui/Search/searchResult';
 import * as tsh from 'teleterm/services/tshd/types';
-import { sortResults, useSearch } from 'teleterm/ui/Search/useSearch';
 import * as uri from 'teleterm/ui/uri';
 
-import { mapToActions, SearchAction } from '../actions';
+import { SearchAction } from '../actions';
 import { useSearchContext } from '../SearchContext';
+
+import { useSearchAttempts } from './useSearchAttempts';
 
 import { getParameterPicker } from './pickers';
 import { ResultList, EmptyListCopy } from './ResultList';
 
 export function ActionPicker() {
-  const searchLogger = useRef(new Logger('search'));
   const ctx = useAppContext();
   const { clustersService } = ctx;
+  ctx.clustersService.useState();
 
-  const [searchAttempt, search, setAttempt] = useAsync(useSearch());
-  const { inputValue, changeActivePicker, close, closeAndResetInput } =
-    useSearchContext();
-  const debouncedInputValue = useDebounce(inputValue, 200);
-
-  const attempt = useMemo(
-    () =>
-      mapAttempt(searchAttempt, ({ results, search }) => {
-        const sortedResults = sortResults(results, search);
-        searchLogger.current.info('results for', search, sortedResults);
-
-        return mapToActions(ctx, sortedResults);
-      }),
-    [ctx, searchAttempt]
-  );
+  const {
+    inputValue,
+    changeActivePicker,
+    close,
+    resetInput,
+    closeAndResetInput,
+  } = useSearchContext();
+  const { attempts, resetAttempts } = useSearchAttempts();
 
   const getClusterName = useCallback(
     (resourceUri: uri.ResourceUri) => {
@@ -77,32 +66,23 @@ export function ActionPicker() {
     [clustersService]
   );
 
-  // Reset the attempt if input gets cleaned. If we did that in useEffect on debouncedInputValue,
-  // then if you typed in something, then cleared the input and started typing something new,
-  // you'd see stale results for a brief second.
-  if (inputValue === '' && attempt.status !== '') {
-    setAttempt(makeEmptyAttempt());
-  }
-
-  useEffect(() => {
-    if (debouncedInputValue) {
-      search(debouncedInputValue);
-    }
-  }, [debouncedInputValue, search]);
-
   const onPick = useCallback(
     (action: SearchAction) => {
-      setAttempt(makeEmptyAttempt());
+      resetAttempts();
 
       if (action.type === 'simple-action') {
         action.perform();
-        closeAndResetInput();
+        if (action.preventAutoClose === true) {
+          resetInput();
+        } else {
+          closeAndResetInput();
+        }
       }
       if (action.type === 'parametrized-action') {
         changeActivePicker(getParameterPicker(action));
       }
     },
-    [changeActivePicker, closeAndResetInput]
+    [changeActivePicker, resetAttempts, closeAndResetInput, resetInput]
   );
 
   if (!inputValue) {
@@ -126,13 +106,16 @@ export function ActionPicker() {
 
   return (
     <ResultList<SearchAction>
-      attempt={attempt}
+      attempts={attempts}
       onPick={onPick}
       onBack={close}
       render={item => {
         const Component = ComponentMap[item.searchResult.kind];
         return {
-          key: item.searchResult.resource.uri,
+          key:
+            item.searchResult.kind !== 'resource-type-filter'
+              ? item.searchResult.resource.uri
+              : item.searchResult.resource,
           Component: (
             <Component
               searchResult={item.searchResult}
@@ -150,23 +133,6 @@ export function ActionPicker() {
   );
 }
 
-function useDebounce<T>(value: T, delay: number): T {
-  // State and setters for debounced value
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(
-    () => {
-      // Update debounced value after delay
-      const handler = setTimeout(() => setDebouncedValue(value), delay);
-      // Cancel the timeout if value changes (also on delay change or unmount)
-      // This is how we prevent debounced value from updating if value is changed ...
-      // .. within the delay period. Timeout gets cleared and restarted.
-      return () => clearTimeout(handler);
-    },
-    [value, delay] // Only re-call effect if value or delay changes
-  );
-  return debouncedValue;
-}
-
 export const ComponentMap: Record<
   SearchResult['kind'],
   React.FC<SearchResultItem<SearchResult>>
@@ -174,12 +140,54 @@ export const ComponentMap: Record<
   server: ServerItem,
   kube: KubeItem,
   database: DatabaseItem,
+  'cluster-filter': NarrowDownByCluster,
+  'resource-type-filter': NarrowDownByResourceType,
 };
 
 type SearchResultItem<T> = {
   searchResult: T;
   getClusterName: (uri: uri.ResourceUri) => string;
 };
+
+function NarrowDownByCluster(props: SearchResultItem<SearchResultCluster>) {
+  return (
+    <Flex alignItems="flex-start" minWidth="300px">
+      <SquareIconBackground color="#4DB2F0">
+        <icons.CardView fontSize="20px" />
+      </SquareIconBackground>
+      <Flex flexDirection="column" ml={1} flex={1}>
+        <Box mr={2}>
+          {'Search only in '}
+          <Highlight
+            text={props.searchResult.resource.name}
+            keywords={[props.searchResult.nameMatch]}
+          />
+        </Box>
+      </Flex>
+    </Flex>
+  );
+}
+
+function NarrowDownByResourceType(
+  props: SearchResultItem<SearchResultResourceType>
+) {
+  return (
+    <Flex alignItems="flex-start" minWidth="300px">
+      <SquareIconBackground color="#512FC9">
+        <icons.Cluster fontSize="20px" />
+      </SquareIconBackground>
+      <Flex flexDirection="column" ml={1} flex={1}>
+        <Box mr={2}>
+          {'Search only for '}
+          <Highlight
+            text={props.searchResult.resource}
+            keywords={[props.searchResult.nameMatch]}
+          />
+        </Box>
+      </Flex>
+    </Flex>
+  );
+}
 
 export function ServerItem(props: SearchResultItem<SearchResultServer>) {
   const { searchResult } = props;
@@ -335,7 +343,9 @@ export function KubeItem(props: SearchResultItem<SearchResultKube>) {
 }
 
 function Labels(
-  props: React.PropsWithChildren<{ searchResult: SearchResult }>
+  props: React.PropsWithChildren<{
+    searchResult: ResourceSearchResult;
+  }>
 ) {
   const { searchResult } = props;
 
@@ -384,7 +394,10 @@ const ResourceFields = styled(Flex).attrs({ gap: 1 })`
   font-size: ${props => props.theme.fontSizes[0]}px;
 `;
 
-function Label(props: { searchResult: SearchResult; label: tsh.Label }) {
+function Label(props: {
+  searchResult: ResourceSearchResult;
+  label: tsh.Label;
+}) {
   const { searchResult: item, label } = props;
   const labelMatches = item.labelMatches.filter(
     match => match.labelName == label.name
@@ -409,13 +422,15 @@ function Label(props: { searchResult: SearchResult; label: tsh.Label }) {
 }
 
 function HighlightField(props: {
-  searchResult: SearchResult;
-  field: ResourceMatch<SearchResult['kind']>['field'];
+  searchResult: ResourceSearchResult;
+  field: ResourceMatch<ResourceSearchResult['kind']>['field'];
 }) {
   // `as` used as a workaround for a TypeScript issue.
   // https://github.com/microsoft/TypeScript/issues/33591
   const keywords = (
-    props.searchResult.resourceMatches as ResourceMatch<SearchResult['kind']>[]
+    props.searchResult.resourceMatches as ResourceMatch<
+      ResourceSearchResult['kind']
+    >[]
   )
     .filter(match => match.field === props.field)
     .map(match => match.searchTerm);

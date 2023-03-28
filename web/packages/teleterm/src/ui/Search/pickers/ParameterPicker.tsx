@@ -29,15 +29,23 @@ interface ParameterPickerProps {
 }
 
 export function ParameterPicker(props: ParameterPickerProps) {
-  const { inputValue, closeAndResetInput, changeActivePicker } =
+  const { inputValue, closeAndResetInput, changeActivePicker, resetInput } =
     useSearchContext();
   const [suggestionsAttempt, fetch] = useAsync(
     props.action.parameter.getSuggestions
+  );
+  const [inputSuggestionAttempt, updateInputSuggestion] = useAsync(
+    async () => inputValue && [inputValue]
   );
 
   useEffect(() => {
     fetch();
   }, [props.action]);
+
+  // TODO(gzdunek) get rid of this `useEffect`
+  useEffect(() => {
+    updateInputSuggestion();
+  }, [inputValue]);
 
   const attempt = mapAttempt(suggestionsAttempt, suggestions =>
     suggestions.filter(
@@ -47,17 +55,16 @@ export function ParameterPicker(props: ParameterPickerProps) {
     )
   );
 
-  let extraItems: string[] = [];
-  if (inputValue) {
-    extraItems = [inputValue];
-  }
-
   const onPick = useCallback(
     (item: string) => {
       props.action.perform(item);
-      closeAndResetInput();
+      if (props.action.preventAutoClose === true) {
+        resetInput();
+      } else {
+        closeAndResetInput();
+      }
     },
-    [closeAndResetInput, props.action]
+    [closeAndResetInput, resetInput, props.action]
   );
 
   const onBack = useCallback(() => {
@@ -66,8 +73,7 @@ export function ParameterPicker(props: ParameterPickerProps) {
 
   return (
     <ResultList<string>
-      attempt={attempt}
-      extraItems={extraItems}
+      attempts={[inputSuggestionAttempt, attempt]}
       onPick={onPick}
       onBack={onBack}
       render={item => ({

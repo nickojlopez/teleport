@@ -18,7 +18,12 @@ import { useCallback } from 'react';
 
 import { assertUnreachable } from 'teleterm/ui/utils';
 import { useAppContext } from 'teleterm/ui/appContextProvider';
-import { SearchResult as ResourceSearchResult } from 'teleterm/ui/services/resources';
+
+import {
+  ClusterSearchFilter,
+  ResourceTypeSearchFilter,
+  SearchFilter,
+} from 'teleterm/ui/Search/SearchContext';
 
 import {
   LabelMatch,
@@ -27,26 +32,47 @@ import {
   ResourceMatch,
   searchableFields,
   SearchResult,
+  ResourceSearchResult,
+  FilterSearchResult,
 } from './searchResult';
 
+import type * as resourcesServiceTypes from 'teleterm/ui/services/resources';
+
 /**
- * useSearch returns a function which searches for the given list of space-separated keywords across
+ * useResourceSearch returns a function which searches for the given list of space-separated keywords across
  * all root and leaf clusters that the user is currently logged in to.
  *
  * It does so by issuing a separate request for each resource type to each cluster. It fails if any
  * of those requests fail.
  */
-export function useSearch() {
+export function useResourceSearch() {
   const { clustersService, resourcesService } = useAppContext();
   clustersService.useState();
 
   return useCallback(
-    async (search: string) => {
+    async (search: string, restrictions: SearchFilter[]) => {
+      const clusterSearchFilter = restrictions.find(
+        s => s.filter === 'cluster'
+      ) as ClusterSearchFilter;
+      const resourceTypeSearchFilter = restrictions.find(
+        s => s.filter === 'resource-type'
+      ) as ResourceTypeSearchFilter;
+
       const connectedClusters = clustersService
         .getClusters()
         .filter(c => c.connected);
-      const searchPromises = connectedClusters.map(cluster =>
-        resourcesService.searchResources(cluster.uri, search)
+      const clustersToSearch = clusterSearchFilter
+        ? connectedClusters.filter(
+            c => clusterSearchFilter.rootClusterUri === c.uri
+          )
+        : connectedClusters;
+
+      const searchPromises = clustersToSearch.map(cluster =>
+        resourcesService.searchResources(
+          cluster.uri,
+          search,
+          resourceTypeSearchFilter
+        )
       );
       const results = (await Promise.all(searchPromises)).flat().slice(0, 10);
 
@@ -56,10 +82,81 @@ export function useSearch() {
   );
 }
 
+/**
+ * `useFilterSearch` returns a function which searches for clusters or resource types,
+ * which are later used to narrow down the requests in `useResourceSearch`.
+ */
+export function useFilterSearch() {
+  const { clustersService, workspacesService } = useAppContext();
+  clustersService.useState();
+  workspacesService.useState();
+
+  return useCallback(
+    async (
+      search: string,
+      restrictions: SearchFilter[]
+    ): Promise<{ results: FilterSearchResult[]; search: string }> => {
+      const getClusters = () =>
+        clustersService
+          .getRootClusters()
+          .filter(cluster =>
+            cluster.name
+              .toLocaleLowerCase()
+              .includes(search.toLocaleLowerCase())
+          )
+          .map(cluster => {
+            let score = getLengthScore(search, cluster.name);
+            if (cluster.uri === workspacesService.getRootClusterUri()) {
+              // put the active cluster first
+              score *= 3;
+            }
+            return {
+              kind: 'cluster-filter' as const,
+              resource: cluster,
+              nameMatch: search,
+              score,
+            };
+          });
+      const getResourceType = () =>
+        ['kubes' as const, 'servers' as const, 'databases' as const]
+          .filter(resourceType =>
+            resourceType.toLowerCase().includes(search.toLowerCase())
+          )
+          .map(resourceType => ({
+            kind: 'resource-type-filter' as const,
+            resource: resourceType,
+            nameMatch: search,
+            score: getLengthScore(search, resourceType),
+          }));
+
+      const shouldReturnClusters = !restrictions.some(
+        r => r.filter === 'cluster'
+      );
+      const shouldReturnResourceTypes = !restrictions.some(
+        r => r.filter === 'resource-type'
+      );
+
+      const results = [
+        shouldReturnClusters && getClusters(),
+        shouldReturnResourceTypes && getResourceType(),
+      ]
+        .filter(Boolean)
+        .flat()
+        .sort((a, b) => {
+          // Highest score first.
+          return b.score - a.score;
+        });
+
+      return { results, search };
+    },
+    [clustersService, workspacesService]
+  );
+}
+
 export function sortResults(
-  searchResults: ResourceSearchResult[],
+  searchResults: resourcesServiceTypes.SearchResult[],
   search: string
-): SearchResult[] {
+): ResourceSearchResult[] {
   const terms = search
     .split(' ')
     .filter(Boolean)
@@ -93,11 +190,11 @@ export function sortResults(
 }
 
 function populateMatches(
-  searchResult: ResourceSearchResult,
+  searchResult: resourcesServiceTypes.SearchResult,
   terms: string[]
-): SearchResult {
+): ResourceSearchResult {
   const labelMatches: LabelMatch[] = [];
-  const resourceMatches: ResourceMatch<SearchResult['kind']>[] = [];
+  const resourceMatches: ResourceMatch<ResourceSearchResult['kind']>[] = [];
 
   terms.forEach(term => {
     searchResult.resource.labelsList.forEach(label => {
@@ -145,7 +242,9 @@ function populateMatches(
 
 // TODO(ravicious): Extract the scoring logic to a function to better illustrate different weight
 // for different matches.
-function calculateScore(searchResult: SearchResult): SearchResult {
+function calculateScore(
+  searchResult: ResourceSearchResult
+): ResourceSearchResult {
   let searchResultScore = 0;
 
   const labelMatches = searchResult.labelMatches.map(match => {
@@ -157,10 +256,7 @@ function calculateScore(searchResult: SearchResult): SearchResult {
         const label = searchResult.resource.labelsList.find(
           label => label.name === match.labelName
         );
-
-        labelMatchScore = Math.floor(
-          (searchTerm.length / label.name.length) * 100
-        );
+        const labelMatchScore = getLengthScore(searchTerm, label.name);
         searchResultScore += labelMatchScore;
         break;
       }
@@ -169,9 +265,7 @@ function calculateScore(searchResult: SearchResult): SearchResult {
           label => label.name === match.labelName
         );
 
-        labelMatchScore = Math.floor(
-          (searchTerm.length / label.value.length) * 100
-        );
+        labelMatchScore = getLengthScore(searchTerm, label.value);
         searchResultScore += labelMatchScore;
         break;
       }
@@ -189,11 +283,13 @@ function calculateScore(searchResult: SearchResult): SearchResult {
     const isMainField = mainResourceField[searchResult.kind] === match.field;
     const weight = isMainField ? 4 : 2;
 
-    const resourceMatchScore = Math.floor(
-      (searchTerm.length / field.length) * 100 * weight
-    );
+    const resourceMatchScore = getLengthScore(searchTerm, field) * weight;
     searchResultScore += resourceMatchScore;
   }
 
   return { ...searchResult, labelMatches, score: searchResultScore };
+}
+
+function getLengthScore(searchTerm: string, matchedValue: string): number {
+  return Math.floor((searchTerm.length / matchedValue.length) * 100);
 }

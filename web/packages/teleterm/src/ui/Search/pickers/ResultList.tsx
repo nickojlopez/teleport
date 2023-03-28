@@ -29,11 +29,12 @@ import { Box } from 'design';
 import LinearProgress from 'teleterm/ui/components/LinearProgress';
 
 type ResultListProps<T> = {
-  attempt: Attempt<T[]>;
   /**
-   * extraItems is an array of extra results that get render irrelevant of the attempt status.
+   * List of attempts containing results to render.
+   * Displayed items will follow the order of attempts.
+   * If any attempt is loading, then the loading bar is visible.
    */
-  extraItems?: T[];
+  attempts: Attempt<T[]>[];
   /**
    * NoResultsComponent is the element that's going to be rendered instead of the list if the
    * attempt has successfully finished but there's no results to show.
@@ -45,27 +46,16 @@ type ResultListProps<T> = {
 };
 
 export function ResultList<T>(props: ResultListProps<T>) {
-  const {
-    attempt,
-    extraItems = [],
-    NoResultsComponent,
-    onPick,
-    onBack,
-  } = props;
+  const { attempts, NoResultsComponent, onPick, onBack } = props;
   const activeItemRef = useRef<HTMLDivElement>();
   const [activeItemIndex, setActiveItemIndex] = useState(0);
   const shouldShowNoResultsCopy =
     NoResultsComponent &&
-    attempt.status === 'success' &&
-    attempt.data.length === 0;
+    attempts.every(a => a.status === 'success' && a.data.length === 0);
 
-  const items = useMemo(
-    () =>
-      attempt.status === 'success'
-        ? [...extraItems, ...attempt.data]
-        : extraItems,
-    [attempt.status, attempt.data, extraItems]
-  );
+  const items = useMemo(() => {
+    return attempts.map(a => a.data || []).flat();
+  }, [attempts]);
 
   // Reset the active item index if it's greater than the number of available items.
   // This can happen in cases where the user selects the nth item and then filters the list so that
@@ -115,11 +105,11 @@ export function ResultList<T>(props: ResultListProps<T>) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, attempt.status, onPick, onBack, activeItemIndex]);
+  }, [items, onPick, onBack, activeItemIndex]);
 
   return (
     <>
-      {attempt.status === 'processing' && (
+      {attempts.some(a => a.status === 'processing') && (
         <div
           style={{
             position: 'absolute',

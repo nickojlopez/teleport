@@ -3,7 +3,7 @@ import { makeSuccessAttempt } from 'shared/hooks/useAsync';
 
 import { routing } from 'teleterm/ui/uri';
 
-import { SearchResult } from '../searchResult';
+import { ResourceSearchResult } from '../searchResult';
 import {
   makeDatabase,
   makeKube,
@@ -179,8 +179,8 @@ export const Items = () => {
         width: 600px;
       `}
     >
-      <ResultList<SearchResult>
-        attempt={attempt}
+      <ResultList<ResourceSearchResult>
+        attempts={[attempt]}
         onPick={() => {}}
         onBack={() => {}}
         render={searchResult => {
