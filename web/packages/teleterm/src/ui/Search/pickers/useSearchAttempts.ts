@@ -54,12 +54,8 @@ export function useSearchAttempts() {
   // Reset the attempt if input gets cleaned. If we did that in useEffect on debouncedInputValue,
   // then if you typed in something, then cleared the input and started typing something new,
   // you'd see stale results for a brief second.
-  if (
-    inputValue === '' &&
-    resourceActionsAttempt.status !== '' &&
-    filterActionsAttempt.status !== ''
-  ) {
-    resetAttempts();
+  if (inputValue === '' && resourceActionsAttempt.status !== '') {
+    setResourceSearchAttempt(makeEmptyAttempt());
   }
 
   useEffect(() => {
@@ -69,9 +65,7 @@ export function useSearchAttempts() {
   }, [debouncedInputValue, runResourceSearch, searchFilters]);
 
   useEffect(() => {
-    if (inputValue) {
-      runFilterSearch(inputValue, searchFilters);
-    }
+    runFilterSearch(inputValue, searchFilters);
   }, [searchFilters, inputValue, runFilterSearch]);
 
   return {

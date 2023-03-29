@@ -94,6 +94,7 @@ export function SearchBar() {
           mr="2px"
           px="8px"
           size="small"
+          key="resource-type"
           onClick={() => removeSearchFilter(s)}
         >
           {s.resourceType}
@@ -118,6 +119,7 @@ export function SearchBar() {
             overflow: hidden;
             display: block;
           `}
+          key="cluster"
           onClick={() => removeSearchFilter(s)}
         >
           {clusterName}

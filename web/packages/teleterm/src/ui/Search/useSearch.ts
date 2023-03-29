@@ -96,38 +96,47 @@ export function useFilterSearch() {
       search: string,
       restrictions: SearchFilter[]
     ): Promise<{ results: FilterSearchResult[]; search: string }> => {
-      const getClusters = () =>
-        clustersService
-          .getClusters()
-          .filter(cluster =>
+      const getClusters = () => {
+        let clusters = clustersService.getClusters();
+        if (search) {
+          clusters = clusters.filter(cluster =>
             cluster.name
               .toLocaleLowerCase()
               .includes(search.toLocaleLowerCase())
-          )
-          .map(cluster => {
-            let score = getLengthScore(search, cluster.name);
-            if (cluster.uri === workspacesService.getRootClusterUri()) {
-              // put the active cluster first
-              score *= 3;
-            }
-            return {
-              kind: 'cluster-filter' as const,
-              resource: cluster,
-              nameMatch: search,
-              score,
-            };
-          });
-      const getResourceType = () =>
-        ['kubes' as const, 'servers' as const, 'databases' as const]
-          .filter(resourceType =>
-            resourceType.toLowerCase().includes(search.toLowerCase())
-          )
-          .map(resourceType => ({
-            kind: 'resource-type-filter' as const,
-            resource: resourceType,
+          );
+        }
+        return clusters.map(cluster => {
+          let score = getLengthScore(search, cluster.name);
+          if (cluster.uri === workspacesService.getRootClusterUri()) {
+            // put the active cluster first (only when there is a match, otherwise score is 0)
+            score *= 3;
+          }
+          return {
+            kind: 'cluster-filter' as const,
+            resource: cluster,
             nameMatch: search,
-            score: getLengthScore(search, resourceType),
-          }));
+            score,
+          };
+        });
+      };
+      const getResourceType = () => {
+        let resourceTypes = [
+          'kubes' as const,
+          'servers' as const,
+          'databases' as const,
+        ];
+        if (search) {
+          resourceTypes = resourceTypes.filter(resourceType =>
+            resourceType.toLowerCase().includes(search.toLowerCase())
+          );
+        }
+        return resourceTypes.map(resourceType => ({
+          kind: 'resource-type-filter' as const,
+          resource: resourceType,
+          nameMatch: search,
+          score: getLengthScore(search, resourceType),
+        }));
+      };
 
       const shouldReturnClusters = !restrictions.some(
         r => r.filter === 'cluster'
@@ -137,8 +146,8 @@ export function useFilterSearch() {
       );
 
       const results = [
-        shouldReturnClusters && getClusters(),
         shouldReturnResourceTypes && getResourceType(),
+        shouldReturnClusters && getClusters(),
       ]
         .filter(Boolean)
         .flat()

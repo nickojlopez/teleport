@@ -47,13 +47,8 @@ export function ActionPicker() {
   const { clustersService } = ctx;
   ctx.clustersService.useState();
 
-  const {
-    inputValue,
-    changeActivePicker,
-    close,
-    resetInput,
-    closeAndResetInput,
-  } = useSearchContext();
+  const { changeActivePicker, close, resetInput, closeAndResetInput } =
+    useSearchContext();
   const { attempts, resetAttempts } = useSearchAttempts();
 
   const getClusterName = useCallback(
@@ -84,25 +79,6 @@ export function ActionPicker() {
     },
     [changeActivePicker, resetAttempts, closeAndResetInput, resetInput]
   );
-
-  if (!inputValue) {
-    return (
-      <EmptyListCopy>
-        <Text>
-          <ul>
-            <li>Separate the search terms with space.</li>
-            <li>
-              Resources that match the query the most will appear at the top.
-            </li>
-            <li>
-              Selecting a search result will connect to the resource in a new
-              tab.
-            </li>
-          </ul>
-        </Text>
-      </EmptyListCopy>
-    );
-  }
 
   return (
     <ResultList<SearchAction>
