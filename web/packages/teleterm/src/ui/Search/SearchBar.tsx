@@ -101,11 +101,15 @@ export function SearchBar() {
       );
     }
     if (s.filter === 'cluster') {
+      // TODO: This should work with leaf clusters as well and take the cluster name from the URI as
+      // a backup.
       const clusterName = ctx.clustersService.findCluster(
         s.rootClusterUri
       )?.name;
       return (
         <ButtonPrimary
+          // TODO: Use theme values instead of raw px values.
+          // TODO: Do not use margins to space elements, use flex with gap instead.
           m="4px"
           mr="2px"
           px="8px"
@@ -182,6 +186,7 @@ const Input = styled.input(props => {
     width: '100%',
     outline: 'none',
     border: 'none',
+    // TODO: Use values from the theme instead of hardcoded values.
     padding: '2px 4px',
     '&:hover, &:focus': {
       color: theme.colors.primary.contrastText,

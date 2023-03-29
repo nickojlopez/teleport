@@ -72,6 +72,12 @@ export function ActionPicker() {
 
       if (action.type === 'simple-action') {
         action.perform();
+        // TODO: This logic probably should be encapsulated inside SearchContext, so that ActionPicker
+        // and ParameterPicker can reuse it.
+        //
+        // Overall, the context should probably encapsulate more logic so that the components don't
+        // have to worry about low-level stuff such as input state. Input state already lives in the
+        // search context so it should be managed from there, if possible.
         if (action.preventAutoClose === true) {
           resetInput();
         } else {
@@ -85,6 +91,8 @@ export function ActionPicker() {
     [changeActivePicker, resetAttempts, closeAndResetInput, resetInput]
   );
 
+  // TODO: On empty copy, we should display filters outright. Resource type filters first, then
+  // clusters (since there's a finite amount of resource type filters).
   if (!inputValue) {
     return (
       <EmptyListCopy>
@@ -140,6 +148,7 @@ export const ComponentMap: Record<
   server: ServerItem,
   kube: KubeItem,
   database: DatabaseItem,
+  // TODO: Adjust these to match the look of other items.
   'cluster-filter': NarrowDownByCluster,
   'resource-type-filter': NarrowDownByResourceType,
 };

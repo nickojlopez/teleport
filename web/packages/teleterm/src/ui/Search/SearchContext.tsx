@@ -44,16 +44,14 @@ export interface SearchContext {
   closeAndResetInput(): void;
 
   open(): void;
-
   resetInput(): void;
-
   setSearchFilter(filter: SearchFilter): void;
-
   removeSearchFilter(filter: SearchFilter): void;
 }
 
 export interface ResourceTypeSearchFilter {
   filter: 'resource-type';
+  // TODO: Consider using SearchResult['kind'] instead.
   resourceType: 'kubes' | 'servers' | 'databases';
 }
 
@@ -71,6 +69,7 @@ export const SearchContextProvider: FC = props => {
   const [opened, setOpened] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [activePicker, setActivePicker] = useState(actionPicker);
+  // TODO: Choosing data structure for filters.
   const [searchFilters, setSearchFilters] = useState<SearchFilter[]>([]);
 
   function changeActivePicker(picker: SearchPicker): void {

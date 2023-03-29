@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// TODO: This type should probably exist somewhere else, why is ResourcesService importing
+// SearchContext?
 import { ResourceTypeSearchFilter } from 'teleterm/ui/Search/SearchContext';
 
 import type * as types from 'teleterm/services/tshd/types';

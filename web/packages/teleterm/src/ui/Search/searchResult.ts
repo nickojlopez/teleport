@@ -43,6 +43,7 @@ export type SearchResultCluster = {
 };
 export type SearchResultResourceType = {
   kind: 'resource-type-filter';
+  // TODO: Use SearchResult['kind'].
   resource: 'kubes' | 'servers' | 'databases';
   nameMatch: string;
   score: number;
@@ -69,7 +70,7 @@ export type LabelMatch = {
 };
 
 export type ResourceMatch<Kind extends ResourceSearchResult['kind']> = {
-  field: (typeof searchableFields)[Kind][number];
+  field: typeof searchableFields[Kind][number];
   searchTerm: string;
 };
 

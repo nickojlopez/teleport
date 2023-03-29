@@ -170,6 +170,7 @@ export const Items = () => {
         }),
       }),
     }),
+    // TODO: Add new results to the story.
   ];
   const attempt = makeSuccessAttempt(searchResults);
 

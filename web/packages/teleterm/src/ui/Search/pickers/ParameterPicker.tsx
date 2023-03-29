@@ -34,6 +34,7 @@ export function ParameterPicker(props: ParameterPickerProps) {
   const [suggestionsAttempt, fetch] = useAsync(
     props.action.parameter.getSuggestions
   );
+  // TODO: Use makeSuccessAttempt instead.
   const [inputSuggestionAttempt, updateInputSuggestion] = useAsync(
     async () => inputValue && [inputValue]
   );

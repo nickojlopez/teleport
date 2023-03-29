@@ -17,6 +17,8 @@ export function useSearchAttempts() {
   const searchContext = useSearchContext();
 
   const { inputValue, searchFilters } = searchContext;
+  // TODO: Debounce runResourceSearch instead of inputValue?
+  // https://epicreact.dev/how-react-uses-closures-to-avoid-bugs/
   const debouncedInputValue = useDebounce(inputValue, 200);
 
   const [resourceSearchAttempt, runResourceSearch, setResourceSearchAttempt] =
@@ -29,7 +31,7 @@ export function useSearchAttempts() {
   const resetAttempts = useCallback(() => {
     setResourceSearchAttempt(makeEmptyAttempt());
     setFilterSearchAttempt(makeEmptyAttempt());
-  }, []);
+  }, [setResourceSearchAttempt, setFilterSearchAttempt]);
 
   const resourceActionsAttempt = useMemo(
     () =>
@@ -68,6 +70,7 @@ export function useSearchAttempts() {
     }
   }, [debouncedInputValue, runResourceSearch, searchFilters]);
 
+  // TODO: This should run when the input changes.
   useEffect(() => {
     if (inputValue) {
       runFilterSearch(inputValue, searchFilters);
