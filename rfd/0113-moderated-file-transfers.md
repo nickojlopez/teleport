@@ -55,46 +55,33 @@ The general idea of the solution is to provide a way for users to "request-a-req
 When a file transfer is made via the web UI, the ui will determine if the file transfer will require an approval process. 
 Only moderated sessions will require this process. If the launched session is not a moderated session, we can pass the file transfer http request as normal. 
 The UI currently doesn't have an explicit flag stating if it is in a moderated session or not, so we will have to pass this value back to the UI with the rest of the [SessionMetadata](https://github.com/gravitational/teleport/blob/master/web/packages/teleport/src/services/session/types.ts#L44) on session init.
-Once the approval process is completed, the file transfer http request will be sent with our new extra parameters. More details [below](#updated-file-transfer-api-handler)
+Once the approval process is completed, the file transfer http request will be sent with our new extra parameters. More details [below](#updated-file-transfer-api-handler).
 
 ```go
 type FileTransferRequest {
     id string // UUID
-	// requester is the Teleport User that requested the file transfer
+    // requester is the Teleport User that requested the file transfer
     requester string
     sessionID string
     filePath string
-	// approvers is a list of participants of moderator or peer type that have approved the request
+    // approvers is a list of participants of moderator or peer type that have approved the request
+    // We do not need to track people who have denied because 1 deny will remove the request from the session
     approvers []*party
+    sshRequest *ssh.Request
     sink bool // upload or download
 }
 ```
 
-We can add any relevant information otherwise needed. 
+We can add any relevant information otherwise needed. A `ssh.Request` already exists in the `ServerContext` that is [passed into](https://github.com/gravitational/teleport/blob/master/lib/srv/sess.go#L277) `OpenExecSession`. `ssh.Request` contains a payload that can be matched against the incoming payload to verify it's the exact request that was approved.
 File-size was considered, but imagine a user trying to download a log file that could have changed size by the time the request flow has completed. 
 
-Because this struct is going to allow an exec command to go through. A `ssh.Request` already exists in the `ServerContext` that is [passed into](https://github.com/gravitational/teleport/blob/master/lib/srv/sess.go#L277) `OpenExecSession`. We can abstract it instead with a struct like below.
-
-```go
-type ModeratedSSHRequest {
-    id string // UUID
-	// requester is the Teleport User that requested the command
-    requester string
-    sessionID string
-	// approvers is a list of participants of moderator or peer type that have approved the request
-    approvers []*party
-    sshRequest *ssh.Request
-}
-```
-
-`ssh.Request` contains a payload that can be matched against the incoming payload to verify it's the exact request that was approved.
 
 This struct would be stored in the active session:
 
 ```go
 type session struct {
     // ...
-    approvedRequests map[string]*ApprovedSSHRequest
+    fileTransferRequests map[string]*FileTransferRequest
 }
 ```
 
@@ -187,7 +174,7 @@ func (s *SessionRegistry) OpenExecSession(ctx context.Context, channel ssh.Chann
 
 The request-a-request flow would be: the request -> the approval -> the file transfer
 
-The `ApprovedFileTransferRequest` will be stored in-memory and not need to be persisted as it's own entity anywhere else.
+The `FileTransferRequest` will be stored in-memory and not need to be persisted as it's own entity anywhere else.
 
 We can extend our current File Transfer UI for almost every aspect of moderated file transfers with just a few additions.
 
