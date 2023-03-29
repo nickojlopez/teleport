@@ -223,7 +223,8 @@ const StyledGlobalSearchResults = styled.div(({ theme }) => {
     color: theme.colors.primary.contrastText,
     background: theme.colors.primary.light,
     boxSizing: 'border-box',
-    width: '100%',
+    // Account for border.
+    width: 'calc(100% + 2px)',
     // Careful, this is hardcoded based on the input height.
     marginTop: '38px',
     display: 'block',
