@@ -13,7 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
-
+import "gogoproto/gogo.proto";
 package teleport.devicetrust.v1;
 
 import "google/protobuf/timestamp.proto";
@@ -48,11 +48,17 @@ message Device {
 
   // Create time.
   // System managed.
-  google.protobuf.Timestamp create_time = 5;
+  google.protobuf.Timestamp create_time = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
 
   // Last update time.
   // System managed.
-  google.protobuf.Timestamp update_time = 6;
+  google.protobuf.Timestamp update_time = 6 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
 
   // Enrollment token for the device.
   // Only present in situations where device creation and enrollment are rolled

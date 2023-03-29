@@ -13,7 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
-
+import "gogoproto/gogo.proto";
 package teleport.devicetrust.v1;
 
 import "google/protobuf/timestamp.proto";
@@ -28,11 +28,17 @@ option go_package = "github.com/gravitational/teleport/api/gen/proto/go/teleport
 message DeviceCollectedData {
   // Time of data collection, set by the client.
   // Required.
-  google.protobuf.Timestamp collect_time = 1;
+  google.protobuf.Timestamp collect_time = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
 
   // Time of data collection, as received by the server.
   // System managed.
-  google.protobuf.Timestamp record_time = 2;
+  google.protobuf.Timestamp record_time = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
 
   // Device operating system.
   // Required.
