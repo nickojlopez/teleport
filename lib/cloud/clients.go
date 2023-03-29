@@ -245,10 +245,10 @@ type azureClients struct {
 // i.e. [role1 role2] => assume role1 => assume role2.
 //
 // There are currently two reasons that roles may be assumed:
-//   1. The Teleport database AWS metadata or discovery matcher is configured
-//      to assume a role.
-//   2. Specific protocols (DynamoDB, Redshift Serverless) use AWS assumed roles
-//      for RBAC, where db user is the name of an AWS role to assume.
+//  1. The Teleport database AWS metadata or discovery matcher is configured
+//     to assume a role.
+//  2. Specific protocols (DynamoDB, Redshift Serverless) use AWS assumed roles
+//     for RBAC, where db user is the name of an AWS role to assume.
 //
 // Each session in the chain of assume role calls is cached.
 func (c *cloudClients) GetAWSSession(ctx context.Context, region string, roles ...services.AssumeRole) (*awssession.Session, error) {
@@ -1099,6 +1099,7 @@ func (c *AWSSessionCacheKeyBuilder) String() string {
 //   - a role is in a different partition than the given region.
 //   - a role is in a different account than the next role and the next role
 //     does not have an external ID.
+//
 // "superfluous external IDs" are those for a role that is in the same account
 // as the role preceding it in the chain.
 func checkAndSetAssumeRoles(region string, roles []services.AssumeRole) ([]services.AssumeRole, error) {
