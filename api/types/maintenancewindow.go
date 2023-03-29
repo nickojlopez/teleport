@@ -94,7 +94,7 @@ func (w *AgentUpgradeWindow) generator(from time.Time) func() (start time.Time, 
 	}
 }
 
-// Export exports the next `n` upgarde windows as a schedule object, starting from `from`.
+// Export exports the next `n` upgrade windows as a schedule object, starting from `from`.
 func (w *AgentUpgradeWindow) Export(from time.Time, n int) AgentUpgradeSchedule {
 	gen := w.generator(from)
 
@@ -166,8 +166,18 @@ func (m *MaintenanceWindowV1) CheckAndSetDefaults() error {
 		return trace.BadParameter("unexpected maintenance window resource version %q (expected %q)", m.Version, V1)
 	}
 
+	if m.Kind == MetaNameMaintenanceWindow {
+		// normalize easy mixup
+		m.Kind = KindMaintenanceWindow
+	}
+
 	if m.Kind != KindMaintenanceWindow {
 		return trace.BadParameter("unexpected maintenance window kind %q (expected %q)", m.Kind, KindMaintenanceWindow)
+	}
+
+	if m.Metadata.Name == KindMaintenanceWindow {
+		// normalize easy mixup
+		m.Metadata.Name = MetaNameMaintenanceWindow
 	}
 
 	if m.Metadata.Name != MetaNameMaintenanceWindow {

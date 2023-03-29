@@ -4284,6 +4284,13 @@ type maintenanceWindowCacheKey struct {
 	key string
 }
 
+// agentWindowLookahead is the number of maintenance windows, starting from 'today', that we export
+// when compiling agent upgrade schedules. The choice is arbitrary. We must export at least 2, because upgraders
+// treat a schedule value whose windows all end in the past to be stale and therefore a sign that the agent is
+// unhealthy. 3 was picked to give us some leeway in terms of how long an agent can be turned off before its
+// upgrader starts complaining of a stale schedule.
+const agentWindowLookahead = 3
+
 // exportMaintenanceWindowsCached generates the export value of all maintenance window schedule types. Since schedules
 // are reloaded frequently in large clusters and export incurs string/json encoding, we use the ttl cache to store
 // the encoded schedule values for a few seconds.
@@ -4305,7 +4312,7 @@ func (a *Server) exportMaintenanceWindowsCached(ctx context.Context) (proto.Expo
 			return rsp, nil
 		}
 
-		sched := agentWindow.Export(time.Now(), 3)
+		sched := agentWindow.Export(time.Now(), agentWindowLookahead)
 
 		rsp.CanonicalSchedule = &sched
 

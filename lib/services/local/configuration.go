@@ -496,5 +496,5 @@ const (
 	scriptsPrefix           = "scripts"
 	uiPrefix                = "ui"
 	installerPrefix         = "installer"
-	maintenanceWindowPrefix = "maintenance-window"
+	maintenanceWindowPrefix = "maintenance_window"
 )

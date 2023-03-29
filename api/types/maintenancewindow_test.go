@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMaintenceWindowAgentUpgrade(t *testing.T) {
+func TestMaintenanceWindowAgentUpgrade(t *testing.T) {
 	newTime := func(day int, hour int) time.Time {
 		return time.Date(
 			2000,

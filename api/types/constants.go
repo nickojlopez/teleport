@@ -339,7 +339,7 @@ const (
 	KindHeadlessAuthentication = "headless_authentication"
 
 	// KindMaintenanceWindow determines maintenance times for the cluster.
-	KindMaintenanceWindow = "maintenance-window"
+	KindMaintenanceWindow = "maintenance_window"
 
 	// MetaNameMaintenanceWindow is the only allowed metadata.name value for the maintenance
 	// window singleton resource.
