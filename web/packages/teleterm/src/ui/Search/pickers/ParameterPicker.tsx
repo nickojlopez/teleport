@@ -16,7 +16,11 @@
 
 import React, { useCallback, useEffect } from 'react';
 import { Highlight } from 'shared/components/Highlight';
-import { mapAttempt, useAsync } from 'shared/hooks/useAsync';
+import {
+  makeSuccessAttempt,
+  mapAttempt,
+  useAsync,
+} from 'shared/hooks/useAsync';
 
 import { useSearchContext } from '../SearchContext';
 import { ParametrizedAction } from '../actions';
@@ -34,18 +38,11 @@ export function ParameterPicker(props: ParameterPickerProps) {
   const [suggestionsAttempt, fetch] = useAsync(
     props.action.parameter.getSuggestions
   );
-  const [inputSuggestionAttempt, updateInputSuggestion] = useAsync(
-    async () => inputValue && [inputValue]
-  );
+  const inputSuggestionAttempt = makeSuccessAttempt(inputValue && [inputValue]);
 
   useEffect(() => {
     fetch();
   }, [props.action]);
-
-  // TODO(gzdunek) get rid of this `useEffect`
-  useEffect(() => {
-    updateInputSuggestion();
-  }, [inputValue]);
 
   const attempt = mapAttempt(suggestionsAttempt, suggestions =>
     suggestions.filter(
