@@ -363,8 +363,6 @@ func TestAuthenticate(t *testing.T) {
 			tunnel:         tun,
 
 			wantCtx: &authContext{
-				kubeUsers:   utils.StringsSet([]string{"user-a"}),
-				kubeGroups:  utils.StringsSet([]string{teleport.KubeSystemAuthenticated}),
 				certExpires: certExpiration,
 				teleportCluster: teleportClusterClient{
 					name:       "remote",
@@ -382,8 +380,6 @@ func TestAuthenticate(t *testing.T) {
 			tunnel:         tun,
 
 			wantCtx: &authContext{
-				kubeUsers:   utils.StringsSet([]string{"user-a"}),
-				kubeGroups:  utils.StringsSet([]string{teleport.KubeSystemAuthenticated}),
 				certExpires: certExpiration,
 				teleportCluster: teleportClusterClient{
 					name:       "remote",
@@ -401,8 +397,6 @@ func TestAuthenticate(t *testing.T) {
 			tunnel:         tun,
 
 			wantCtx: &authContext{
-				kubeUsers:   utils.StringsSet([]string{"user-a"}),
-				kubeGroups:  utils.StringsSet([]string{teleport.KubeSystemAuthenticated}),
 				certExpires: certExpiration,
 				teleportCluster: teleportClusterClient{
 					name:       "remote",
@@ -571,8 +565,6 @@ func TestAuthenticate(t *testing.T) {
 			tunnel:            tun,
 
 			wantCtx: &authContext{
-				kubeUsers:       utils.StringsSet([]string{"user-a"}),
-				kubeGroups:      utils.StringsSet([]string{teleport.KubeSystemAuthenticated}),
 				kubeClusterName: "foo",
 				certExpires:     certExpiration,
 				teleportCluster: teleportClusterClient{
@@ -642,11 +634,12 @@ func TestAuthenticate(t *testing.T) {
 				require.Equal(t, trace.IsAccessDenied(err), tt.wantAuthErr)
 				return
 			}
+			err = f.authorize(context.Background(), gotCtx)
 			require.NoError(t, err)
 
 			require.Empty(t, cmp.Diff(gotCtx, tt.wantCtx,
 				cmp.AllowUnexported(authContext{}, teleportClusterClient{}),
-				cmpopts.IgnoreFields(authContext{}, "clientIdleTimeout", "sessionTTL", "Context", "recordingConfig", "disconnectExpiredCert"),
+				cmpopts.IgnoreFields(authContext{}, "clientIdleTimeout", "sessionTTL", "Context", "recordingConfig", "disconnectExpiredCert", "kubeCluster"),
 				cmpopts.IgnoreFields(teleportClusterClient{}, "dial", "isRemoteClosed"),
 			))
 

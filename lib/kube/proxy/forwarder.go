@@ -1122,7 +1122,7 @@ func (f *Forwarder) authorize(ctx context.Context, actx *authContext) error {
 		// check signing TTL and return a list of allowed logins for local cluster based on Kubernetes service labels.
 		kubeAccessDetails, err := f.getKubeAccessDetails(actx.Checker, actx.kubeClusterName, actx.sessionTTL, actx.kubeResource)
 		if err != nil && !trace.IsNotFound(err) {
-			return trace.Wrap(err)
+			return trace.AccessDenied(notFoundMessage)
 			// roles.CheckKubeGroupsAndUsers returns trace.NotFound if the user does
 			// does not have at least one configured kubernetes_users or kubernetes_groups.
 		} else if trace.IsNotFound(err) {

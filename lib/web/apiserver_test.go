@@ -5830,7 +5830,7 @@ func TestDiagnoseKubeConnection(t *testing.T) {
 					Type:    types.ConnectionDiagnosticTrace_RBAC_KUBE,
 					Status:  types.ConnectionDiagnosticTrace_FAILED,
 					Details: "You are not authorized to access this Kubernetes Cluster. Ensure your role grants access by adding it to the 'kubernetes_labels' property.",
-					Error:   "[00] access denied",
+					Error:   "kubernetes cluster \"kube_cluster\" not found",
 				},
 			},
 		},
@@ -8087,12 +8087,10 @@ func TestForwardingTraces(t *testing.T) {
 	}
 }
 
-type mockPROXYSigner struct {
-}
+type mockPROXYSigner struct{}
 
 func (m *mockPROXYSigner) SignPROXYHeader(source, destination net.Addr) ([]byte, error) {
 	return nil, nil
-
 }
 
 type mockTraceClient struct {
