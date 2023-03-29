@@ -31,7 +31,6 @@ import {
   mainResourceName,
   ResourceMatch,
   searchableFields,
-  SearchResult,
   ResourceSearchResult,
   FilterSearchResult,
 } from './searchResult';
@@ -107,7 +106,10 @@ export function useFilterSearch() {
         }
         return clusters.map(cluster => {
           let score = getLengthScore(search, cluster.name);
-          if (cluster.uri === workspacesService.getRootClusterUri()) {
+          if (
+            cluster.uri ===
+            workspacesService.getActiveWorkspace()?.localClusterUri
+          ) {
             // put the active cluster first (only when there is a match, otherwise score is 0)
             score *= 3;
           }
