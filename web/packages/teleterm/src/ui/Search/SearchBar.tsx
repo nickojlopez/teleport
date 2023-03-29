@@ -29,6 +29,8 @@ import {
   useKeyboardShortcuts,
 } from 'teleterm/ui/services/keyboardShortcuts';
 
+import { routing } from 'teleterm/ui/uri';
+
 import { useAppContext } from '../appContextProvider';
 
 import { actionPicker } from './pickers/pickers';
