@@ -3,11 +3,11 @@ import { makeSuccessAttempt } from 'shared/hooks/useAsync';
 
 import { routing } from 'teleterm/ui/uri';
 
-import { ResourceSearchResult } from '../searchResult';
+import { SearchResult } from '../searchResult';
 import {
   makeDatabase,
   makeKube,
-  makeResult,
+  makeResourceResult,
   makeServer,
   makeLabelsList,
 } from '../searchResultTestHelpers';
@@ -24,8 +24,31 @@ export default {
 const clusterUri: uri.ClusterUri = '/clusters/teleport-local';
 
 export const Items = () => {
-  const searchResults = [
-    makeResult({
+  return (
+    <div
+      css={`
+        max-width: 600px;
+      `}
+    >
+      <List />
+    </div>
+  );
+};
+export const ItemsNarrow = () => {
+  return (
+    <div
+      css={`
+        max-width: 300px;
+      `}
+    >
+      <List />
+    </div>
+  );
+};
+
+const List = () => {
+  const searchResults: SearchResult[] = [
+    makeResourceResult({
       kind: 'server',
       resource: makeServer({
         hostname: 'long-label-list',
@@ -40,7 +63,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'server',
       resource: makeServer({
         hostname: 'short-label-list',
@@ -56,7 +79,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'server',
       resourceMatches: [{ field: 'name', searchTerm: 'bbaaceba-6bd1-4750' }],
       resource: makeServer({
@@ -73,7 +96,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'database',
       resource: makeDatabase({
         uri: `${clusterUri}/dbs/no-desc`,
@@ -91,7 +114,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'database',
       resource: makeDatabase({
         uri: `${clusterUri}/dbs/short-desc`,
@@ -109,7 +132,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'database',
       resource: makeDatabase({
         uri: `${clusterUri}/dbs/long-desc`,
@@ -127,7 +150,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'database',
       resource: makeDatabase({
         uri: `${clusterUri}/dbs/super-long-desc`,
@@ -145,7 +168,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'kube',
       resource: makeKube({
         name: 'short-label-list',
@@ -156,7 +179,7 @@ export const Items = () => {
         }),
       }),
     }),
-    makeResult({
+    makeResourceResult({
       kind: 'kube',
       resource: makeKube({
         name: 'long-label-list',
@@ -170,33 +193,49 @@ export const Items = () => {
         }),
       }),
     }),
+    {
+      kind: 'resource-type-filter',
+      resource: 'kubes',
+      nameMatch: '',
+      score: 0,
+    },
+    {
+      kind: 'cluster-filter',
+      resource: {
+        name: 'teleport-local',
+        uri: clusterUri,
+        authClusterId: '',
+        connected: true,
+        leaf: false,
+        proxyHost: 'teleport-local.dev:3090',
+      },
+      nameMatch: '',
+      score: 0,
+    },
   ];
   const attempt = makeSuccessAttempt(searchResults);
 
   return (
-    <div
-      css={`
-        width: 600px;
-      `}
-    >
-      <ResultList<ResourceSearchResult>
-        attempts={[attempt]}
-        onPick={() => {}}
-        onBack={() => {}}
-        render={searchResult => {
-          const Component = ComponentMap[searchResult.kind];
+    <ResultList<SearchResult>
+      attempts={[attempt]}
+      onPick={() => {}}
+      onBack={() => {}}
+      render={searchResult => {
+        const Component = ComponentMap[searchResult.kind];
 
-          return {
-            key: searchResult.resource.uri,
-            Component: (
-              <Component
-                searchResult={searchResult}
-                getClusterName={routing.parseClusterName}
-              />
-            ),
-          };
-        }}
-      />
-    </div>
+        return {
+          key:
+            searchResult.kind !== 'resource-type-filter'
+              ? searchResult.resource.uri
+              : searchResult.resource,
+          Component: (
+            <Component
+              searchResult={searchResult}
+              getClusterName={routing.parseClusterName}
+            />
+          ),
+        };
+      }}
+    />
   );
 };

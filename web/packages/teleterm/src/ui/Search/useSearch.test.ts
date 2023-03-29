@@ -16,7 +16,7 @@
 
 import { sortResults } from './useSearch';
 import {
-  makeResult,
+  makeResourceResult,
   makeServer,
   makeKube,
   makeLabelsList,
@@ -24,11 +24,11 @@ import {
 
 describe('sortResults', () => {
   it('uses the displayed resource name as the tie breaker if the scores are equal', () => {
-    const server = makeResult({
+    const server = makeResourceResult({
       kind: 'server',
       resource: makeServer({ hostname: 'z' }),
     });
-    const kube = makeResult({
+    const kube = makeResourceResult({
       kind: 'kube',
       resource: makeKube({ name: 'a' }),
     });
@@ -39,7 +39,7 @@ describe('sortResults', () => {
   });
 
   it('saves individual label match scores', () => {
-    const server = makeResult({
+    const server = makeResourceResult({
       kind: 'server',
       resource: makeServer({
         labelsList: makeLabelsList({ quux: 'bar-baz', foo: 'bar' }),

@@ -28,7 +28,6 @@ import {
   useKeyboardShortcutFormatters,
   useKeyboardShortcuts,
 } from 'teleterm/ui/services/keyboardShortcuts';
-
 import { routing } from 'teleterm/ui/uri';
 
 import { useAppContext } from '../appContextProvider';
@@ -139,14 +138,13 @@ export function SearchBar() {
 
   return (
     <Flex
-      style={{
-        position: 'relative',
-        width: '600px',
-        height: 'auto',
-        background: '#222C59',
-      }}
       css={`
-        border: 0.5px ${props => props.theme.colors.action.disabledBackground}
+        position: relative;
+        min-width: 100px;
+        width: 100%;
+        height: 100%;
+        background: ${props => props.theme.colors.primary.light};
+        border: 1px ${props => props.theme.colors.action.disabledBackground}
           solid;
       `}
       justifyContent="center"
@@ -179,14 +177,14 @@ export function SearchBar() {
 const Input = styled.input(props => {
   const { theme } = props;
   return {
-    height: '32px',
+    height: '100%',
     background: theme.colors.primary.dark,
     boxSizing: 'border-box',
     color: theme.colors.text.primary,
     width: '100%',
     outline: 'none',
     border: 'none',
-    padding: '2px 4px',
+    padding: `${theme.space[1]}px ${theme.space[2]}px`,
     '&:hover, &:focus': {
       color: theme.colors.primary.contrastText,
       background: theme.colors.primary.light,
@@ -204,10 +202,13 @@ const Input = styled.input(props => {
   };
 });
 
+// TODO: Make the Shortcut cover the placeholder. See how QuickInput Shortcut is implemented where
+// it covers the placeholder.
+// TODO: Center the Shortcut.
 const Shortcut = styled(Box)`
   position: absolute;
   right: 12px;
-  top: 8px;
+  top: 10px;
   padding: 2px 3px;
   color: ${({ theme }) => theme.colors.text.secondary};
   background-color: ${({ theme }) => theme.colors.primary.light};
@@ -222,8 +223,9 @@ const StyledGlobalSearchResults = styled.div(({ theme }) => {
     color: theme.colors.primary.contrastText,
     background: theme.colors.primary.light,
     boxSizing: 'border-box',
-    width: '600px',
-    marginTop: '32px',
+    width: '100%',
+    // Careful, this is hardcoded based on the input height.
+    marginTop: '38px',
     display: 'block',
     position: 'absolute',
     border: '1px solid ' + theme.colors.action.hover,
@@ -233,6 +235,7 @@ const StyledGlobalSearchResults = styled.div(({ theme }) => {
     zIndex: '1000',
     maxHeight: '350px',
     overflow: 'auto',
-    minHeight: '50px',
+    // Hardcoded to height of the shortest item.
+    minHeight: '42px',
   };
 });

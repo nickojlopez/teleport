@@ -34,7 +34,7 @@ export const makeKube = (props: Partial<tsh.Kube>): tsh.Kube => ({
 export const makeLabelsList = (labels: Record<string, string>): tsh.Label[] =>
   Object.entries(labels).map(([name, value]) => ({ name, value }));
 
-export const makeResult = (
+export const makeResourceResult = (
   props: Partial<ResourceSearchResult> & {
     kind: ResourceSearchResult['kind'];
     resource: ResourceSearchResult['resource'];
