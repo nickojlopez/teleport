@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,9 +32,13 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/gravitational/trace"
 	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/kubectl/pkg/scheme"
 
 	"github.com/gravitational/teleport/lib/client"
 	"github.com/gravitational/teleport/lib/observability/tracing"
@@ -75,6 +80,19 @@ type Config struct {
 	MinimumMeasurements int
 	// Service is the service to benchmark
 	Service Service
+	// PodExecBenchmark is the pod exec benchmark config.
+	// When not nil, it will be used to run the benchmark using the pod exec
+	// method. If nil, the benchmark will list pods in all namespaces.
+	PodExecBenchmark *PodExecBenchmark
+	// PodNamespace is the namespace of the pod to run the benchmark against.
+	PodNamespace string
+}
+
+type PodExecBenchmark struct {
+	// ContainerName is the name of the container to run the benchmark against.
+	ContainerName string
+	// PodName is the name of the pod to run the benchmark against.
+	PodName string
 }
 
 // CheckAndSetDefaults checks and sets default values for the benchmark config.
@@ -196,7 +214,7 @@ func (c *Config) Benchmark(ctx context.Context, tc *client.TeleportClient) (Resu
 	case SSHService:
 		workload = executeSSHBenchmark
 	case KubernetesService:
-		workload, err = kubernetesBenchmarkCreator(ctx, tc)
+		workload, err = c.kubernetesBenchmarkCreator(ctx, tc)
 		if err != nil {
 			return Result{}, trace.Wrap(err)
 		}
@@ -316,24 +334,74 @@ func executeSSHBenchmark(m benchMeasure) error {
 	return nil
 }
 
-func kubernetesBenchmarkCreator(ctx context.Context, tc *client.TeleportClient) (workloadFunc, error) {
+func (c *Config) kubernetesBenchmarkCreator(ctx context.Context, tc *client.TeleportClient) (workloadFunc, error) {
 	tlsClientConfig, err := getKubeTLSClientConfig(ctx, tc)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	// create a kubernetes client that will be used to execute the benchmark.
-	kubeClient, err := kubernetes.NewForConfig(&rest.Config{
+	restConfig := &rest.Config{
 		Host:            tc.KubeClusterAddr(),
 		TLSClientConfig: tlsClientConfig,
-	})
+		APIPath:         "/api",
+		ContentConfig: rest.ContentConfig{
+			GroupVersion:         &schema.GroupVersion{Version: "v1"},
+			NegotiatedSerializer: scheme.Codecs,
+		},
+	}
+
+	// if the user has specified a pod exec benchmark, use that instead of the
+	// default kubernetes client.
+	if c.PodExecBenchmark != nil {
+		exec, err := c.kubeExecOnPod(ctx, tc, restConfig)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		return func(bm benchMeasure) error {
+			err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+				Stdin:  tc.Stdin,
+				Stdout: tc.Stdout,
+				Stderr: tc.Stderr,
+				Tty:    c.Interactive,
+			})
+			return trace.Wrap(err)
+		}, nil
+	}
+
+	// create a kubernetes client that will be used to execute the benchmark.
+	kubeClient, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	return func(bm benchMeasure) error {
 		// List all pods in all namespaces.
-		_, err := kubeClient.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+		_, err := kubeClient.CoreV1().Pods(c.PodNamespace).List(ctx, metav1.ListOptions{})
 		return trace.Wrap(err)
 	}, nil
+}
+
+func (c *Config) kubeExecOnPod(ctx context.Context, tc *client.TeleportClient, restConfig *rest.Config) (remotecommand.Executor, error) {
+	restClient, err := rest.RESTClientFor(restConfig)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	req := restClient.Post().
+		Resource("pods").
+		Name(c.PodExecBenchmark.PodName).
+		Namespace(c.PodNamespace).
+		SubResource("exec")
+
+	req.VersionedParams(&corev1.PodExecOptions{
+		Container: c.PodExecBenchmark.ContainerName,
+		Command:   c.Command,
+		Stdin:     tc.Stdin != nil,
+		Stdout:    tc.Stdout != nil,
+		Stderr:    tc.Stderr != nil,
+		TTY:       c.Interactive,
+	}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(restConfig, http.MethodPost, req.URL())
+	return exec, trace.Wrap(err)
 }
 
 // getKubeTLSClientConfig returns a TLS client config for the kubernetes cluster

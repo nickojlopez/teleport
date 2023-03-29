@@ -872,9 +872,17 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 	benchSSH.Arg("command", "Command to execute on a remote host").Required().StringsVar(&cf.RemoteCommand)
 	benchSSH.Flag("port", "SSH port on a remote host").Short('p').Int32Var(&cf.NodePort)
 	benchSSH.Flag("interactive", "Create interactive SSH session").BoolVar(&cf.BenchInteractive)
-
+	var benchKubeOpts benchKubeOptions
 	benchKube := bench.Command("kube", "Run Kube benchmark test")
-	benchKube.Arg("kube_cluster", "Kubernetes cluster to use").Required().StringVar(&cf.KubernetesCluster)
+	benchKube.Flag("kube-namespace", "Selects the ").Default("default").StringVar(&benchKubeOpts.namespace)
+	benchListKube := benchKube.Command("ls", "Run a benchmark test to list Pods")
+	benchListKube.Arg("kube_cluster", "Kubernetes cluster to use").Required().StringVar(&cf.KubernetesCluster)
+	benchExecKube := benchKube.Command("exec", "Run a benchmark test to exec into the specified Pod")
+	benchExecKube.Arg("kube_cluster", "Kubernetes cluster to use").Required().StringVar(&cf.KubernetesCluster)
+	benchExecKube.Arg("pod", "Pod name to exec into").Required().StringVar(&benchKubeOpts.pod)
+	benchExecKube.Arg("command", "Command to execute on a pod").Required().StringsVar(&cf.RemoteCommand)
+	benchExecKube.Flag("container", "Selects the container to exec into.").StringVar(&benchKubeOpts.container)
+
 	// show key
 	show := app.Command("show", "Read an identity from file and print to stdout").Hidden()
 	show.Arg("identity_file", "The file containing a public key or a certificate").Required().StringVar(&cf.IdentityFileIn)
@@ -1131,9 +1139,19 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 	case ssh.FullCommand():
 		err = onSSH(&cf)
 	case benchSSH.FullCommand():
-		err = onBenchmark(&cf, benchmark.SSHService)
-	case benchKube.FullCommand():
-		err = onBenchmark(&cf, benchmark.KubernetesService)
+		err = onBenchmark(&cf, benchmark.SSHService, "" /* kubeNamespace */, nil /* podExec */)
+	case benchListKube.FullCommand():
+		err = onBenchmark(&cf, benchmark.KubernetesService, benchKubeOpts.namespace, nil /* podExec */)
+	case benchExecKube.FullCommand():
+		err = onBenchmark(
+			&cf,
+			benchmark.KubernetesService,
+			benchKubeOpts.namespace,
+			&benchmark.PodExecBenchmark{
+				PodName:       benchKubeOpts.pod,
+				ContainerName: benchKubeOpts.container,
+			},
+		)
 	case join.FullCommand():
 		err = onJoin(&cf)
 	case scp.FullCommand():
@@ -1403,6 +1421,12 @@ func fetchProxyVersion(cf *CLIConf) (string, string, error) {
 	}
 
 	return pingRes.ServerVersion, pingRes.Proxy.SSH.PublicAddr, nil
+}
+
+type benchKubeOptions struct {
+	pod       string
+	container string
+	namespace string
 }
 
 func serializeVersion(format string, proxyVersion string, proxyPublicAddress string) (string, error) {
@@ -3085,16 +3109,18 @@ func onSSH(cf *CLIConf) error {
 }
 
 // onBenchmark executes benchmark
-func onBenchmark(cf *CLIConf, service benchmark.Service) error {
+func onBenchmark(cf *CLIConf, service benchmark.Service, kubeNamespace string, exec *benchmark.PodExecBenchmark) error {
 	tc, err := makeClient(cf, false)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 	cnf := benchmark.Config{
-		Command:       cf.RemoteCommand,
-		MinimumWindow: cf.BenchDuration,
-		Rate:          cf.BenchRate,
-		Service:       service,
+		Command:          cf.RemoteCommand,
+		MinimumWindow:    cf.BenchDuration,
+		Rate:             cf.BenchRate,
+		Service:          service,
+		PodNamespace:     kubeNamespace,
+		PodExecBenchmark: exec,
 	}
 	result, err := cnf.Benchmark(cf.Context, tc)
 	if err != nil {
