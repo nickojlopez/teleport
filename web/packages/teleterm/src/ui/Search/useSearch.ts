@@ -63,7 +63,7 @@ export function useResourceSearch() {
         .filter(c => c.connected);
       const clustersToSearch = clusterSearchFilter
         ? connectedClusters.filter(
-            c => clusterSearchFilter.rootClusterUri === c.uri
+            c => clusterSearchFilter.clusterUri === c.uri
           )
         : connectedClusters;
 
@@ -98,7 +98,7 @@ export function useFilterSearch() {
     ): Promise<{ results: FilterSearchResult[]; search: string }> => {
       const getClusters = () =>
         clustersService
-          .getRootClusters()
+          .getClusters()
           .filter(cluster =>
             cluster.name
               .toLocaleLowerCase()

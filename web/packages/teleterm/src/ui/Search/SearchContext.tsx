@@ -24,7 +24,7 @@ import React, {
   MutableRefObject,
 } from 'react';
 
-import { RootClusterUri } from 'teleterm/ui/uri';
+import { ClusterUri } from 'teleterm/ui/uri';
 
 import { actionPicker, SearchPicker } from './pickers/pickers';
 
@@ -59,7 +59,7 @@ export interface ResourceTypeSearchFilter {
 
 export interface ClusterSearchFilter {
   filter: 'cluster';
-  rootClusterUri: RootClusterUri;
+  clusterUri: ClusterUri;
 }
 
 export type SearchFilter = ResourceTypeSearchFilter | ClusterSearchFilter;

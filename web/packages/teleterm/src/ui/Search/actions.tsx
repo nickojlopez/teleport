@@ -139,7 +139,7 @@ export function mapToActions(
         perform() {
           searchContext.setSearchFilter({
             filter: 'cluster',
-            rootClusterUri: result.resource.uri,
+            clusterUri: result.resource.uri,
           });
         },
       };

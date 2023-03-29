@@ -101,9 +101,9 @@ export function SearchBar() {
       );
     }
     if (s.filter === 'cluster') {
-      const clusterName = ctx.clustersService.findCluster(
-        s.rootClusterUri
-      )?.name;
+      const clusterName =
+        ctx.clustersService.findCluster(s.clusterUri)?.name ||
+        routing.parseClusterName(s.clusterUri);
       return (
         <ButtonPrimary
           m="4px"
