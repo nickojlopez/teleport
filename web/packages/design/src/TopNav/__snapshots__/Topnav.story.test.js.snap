@@ -95,7 +95,6 @@ exports[`rendering of TopNav and TopNavItem 1`] = `
 
 .c4 {
   align-items: center;
-  background: #651FFF;
   border-radius: 50%;
   display: flex;
   font-size: 14px;

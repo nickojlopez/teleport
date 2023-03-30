@@ -87,7 +87,6 @@ exports[`rendering of SideNav 1`] = `
 
 .c5:active,
 .c5.active {
-  border-left-color: #651FFF;
   background: #2C3A73;
   color: #FFFFFF;
   font-weight: 600;
@@ -188,7 +187,6 @@ exports[`rendering of SideNav 1`] = `
 }
 
 .c8.active {
-  border-left-color: #651FFF;
   background: #2C3A73;
   color: #FFFFFF;
 }
@@ -232,7 +230,6 @@ exports[`rendering of SideNav 1`] = `
 
 .c15:active,
 .c15.active {
-  border-left-color: #651FFF;
   background: #2C3A73;
   color: #FFFFFF;
   font-weight: 600;
