@@ -198,7 +198,7 @@ Additionally, the following server parameters to will be set to enable TLS authe
 Oracle server allows to authenticate database user based on the certificate CN field:
 
 ```
-CREATE USER alice IDENTIFIED EXTERNALLY AS 'CN=alice;
+CREATE USER alice IDENTIFIED EXTERNALLY AS 'CN=alice';
 ```
 Ref: [Configuring Authentication Using PKI Certificates for Centrally Managed Users](https://docs.oracle.com/en/database/oracle/oracle-database/19/dbseg/integrating_mads_with_oracle_database.html#GUID-1EF17156-3FA4-4EDD-8DFF-F98EB3A926BF)
 
