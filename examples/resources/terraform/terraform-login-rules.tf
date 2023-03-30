@@ -9,7 +9,7 @@ terraform {
 
 provider "teleport" {
   # Update addr to point to your Teleport proxy
-  addr         = "teleport.example.com:443"
+  addr = "teleport.example.com:443"
 
   # Setting profile_dir and profile_name (and leaving them empty) will cause the
   # Terraform provider to authenticate using the current logged-in tsh profile
@@ -25,7 +25,7 @@ resource "teleport_login_rule" "terraform-test-map-rule" {
       example = "yes"
     }
   }
-  version  = "v1"
+  version = "v1"
 
   # The rule with the lowest priority will be evaluated first.
   priority = 0
@@ -38,16 +38,16 @@ resource "teleport_login_rule" "terraform-test-map-rule" {
     # to lowercase, as well as any external "logins" trait.
     "logins" = {
 
-	  # The traits_map value must be an object holding the expressions list in a
-	  # "values" field
+      # The traits_map value must be an object holding the expressions list in a
+      # "values" field
       values = [
         "strings.lower(external.username)",
         "external.logins",
       ]
     }
 
-	# The external "groups" trait will be passed through unchanged, all other
-	# traits will be filtered out.
+    # The external "groups" trait will be passed through unchanged, all other
+    # traits will be filtered out.
     "groups" = {
       values = [
         "external.groups",
@@ -64,7 +64,7 @@ resource "teleport_login_rule" "terraform-test-expression-rule" {
       example = "yes"
     }
   }
-  version  = "v1"
+  version = "v1"
 
   # This rule has a higher priority value, so it will be evaluated after the
   # "terraform-test-map-rule".
