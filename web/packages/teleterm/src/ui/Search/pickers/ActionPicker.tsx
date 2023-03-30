@@ -127,10 +127,8 @@ type SearchResultItem<T> = {
 
 function ClusterFilterItem(props: SearchResultItem<SearchResultCluster>) {
   return (
-    <Flex gap={1} alignItems="center">
-      <SquareIconBackground color="#4DB2F0">
-        <icons.CardView />
-      </SquareIconBackground>
+    <Flex alignItems="center" gap={2}>
+      <icons.Lan color="#ff6257" fontSize="20px" />
       <Text typography="body1">
         Search only in{' '}
         <strong>
@@ -148,10 +146,8 @@ function ResourceTypeFilterItem(
   props: SearchResultItem<SearchResultResourceType>
 ) {
   return (
-    <Flex gap={1} alignItems="center">
-      <SquareIconBackground color="#512FC9">
-        <icons.Cluster />
-      </SquareIconBackground>
+    <Flex alignItems="center" gap={2}>
+      <icons.LanAlt color="#f3af3d" fontSize="20px" />
       <Text typography="body1">
         Search only for{' '}
         <strong>
@@ -180,10 +176,8 @@ export function ServerItem(props: SearchResultItem<SearchResultServer>) {
         flexWrap="wrap"
         gap={2}
       >
-        <Flex alignItems="center" gap={1}>
-          <SquareIconBackground color="#c05b9e">
-            <icons.Server />
-          </SquareIconBackground>
+        <Flex alignItems="center" gap={2}>
+          <icons.Server color="#9685ff" fontSize="20px" />
           <Text typography="body1">
             Connect over SSH to{' '}
             <strong>
@@ -259,17 +253,8 @@ export function DatabaseItem(props: SearchResultItem<SearchResultDatabase>) {
         flexWrap="wrap"
         gap={2}
       >
-        <Flex alignItems="center" gap={1}>
-          <SquareIconBackground
-            color="#4ab9c9"
-            // The database icon is different than ssh and kube icons for some reason.
-            css={`
-              padding-left: 5px;
-              padding-top: 5px;
-            `}
-          >
-            <icons.Database />
-          </SquareIconBackground>
+        <Flex alignItems="center" gap={2}>
+          <icons.Database color="#00bfa5" fontSize="20px" />
           <Text typography="body1">
             Set up a db connection for{' '}
             <strong>
@@ -310,10 +295,8 @@ export function KubeItem(props: SearchResultItem<SearchResultKube>) {
         flexWrap="wrap"
         gap={2}
       >
-        <Flex alignItems="center" gap={1}>
-          <SquareIconBackground color="#326ce5">
-            <icons.Kubernetes />
-          </SquareIconBackground>
+        <Flex alignItems="center" gap={2}>
+          <icons.Kubernetes color="#009eff" fontSize="20px" />
           <Text typography="body1">
             Log in to Kubernetes cluster{' '}
             <strong>
@@ -433,15 +416,3 @@ function HighlightField(props: {
     />
   );
 }
-
-const SquareIconBackground = styled(Box)`
-  background: ${props => props.color};
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 24px;
-  width: 24px;
-  border-radius: 2px;
-  padding: 4px;
-  font-size: 18px;
-`;
