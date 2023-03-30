@@ -50,9 +50,14 @@ export function ActionPicker() {
   const { changeActivePicker, close, resetInput, closeAndResetInput } =
     useSearchContext();
   const { attempts, resetAttempts } = useSearchAttempts();
+  const totalCountOfClusters = clustersService.getClusters().length;
 
   const getClusterName = useCallback(
     (resourceUri: uri.ResourceUri) => {
+      if (totalCountOfClusters === 1) {
+        return;
+      }
+
       const clusterUri = uri.routing.ensureClusterUri(resourceUri);
       const cluster = clustersService.findCluster(clusterUri);
 
