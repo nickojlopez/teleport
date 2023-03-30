@@ -13,19 +13,17 @@ option (gogoproto.unmarshaler_all) = true;
 
 // DeviceV1 is the resource representation of teleport.devicetrust.v1.Device.
 message DeviceV1 {
-  // Kind of the resource.
-  // Always "device".
-  string Kind = 1 [(gogoproto.jsontag) = "kind"];
-  // SubKind of the resource.
-  // Unused for devices.
-  string SubKind = 2 [(gogoproto.jsontag) = "sub_kind,omitempty"];
-  // Version of the resource.
-  // Equivalent to teleport.devicetrust.v1.Device.api_version.
-  // Currently only "v1" is supported.
-  string version = 3 [(gogoproto.jsontag) = "version"];
-  // Metadata of the resource.
-  // The Metadata.Name is equivalent to teleport.devicetrust.v1.Device.id.
-  Metadata metadata = 4 [(gogoproto.jsontag) = "metadata"];
+  // Header is the common resource header.
+  //
+  // - Kind is always "device".
+  // - SubKind is unused.
+  // - Version is equivalent to teleport.devicetrust.v1.Device.api_version.
+  // - Metadata.Name is equivalent to teleport.devicetrust.v1.Device.Id.
+  ResourceHeader Header = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "",
+    (gogoproto.embed) = true
+  ];
   // Specification of the device.
   DeviceSpec spec = 5 [(gogoproto.jsontag) = "spec"];
 }
