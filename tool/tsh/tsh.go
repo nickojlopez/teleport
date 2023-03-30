@@ -882,6 +882,7 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 	benchExecKube.Arg("pod", "Pod name to exec into").Required().StringVar(&benchKubeOpts.pod)
 	benchExecKube.Arg("command", "Command to execute on a pod").Required().StringsVar(&cf.RemoteCommand)
 	benchExecKube.Flag("container", "Selects the container to exec into.").StringVar(&benchKubeOpts.container)
+	benchExecKube.Flag("interactive", "Create interactive Kube session").BoolVar(&cf.BenchInteractive)
 
 	// show key
 	show := app.Command("show", "Read an identity from file and print to stdout").Hidden()
@@ -1160,6 +1161,7 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 				Namespace:     benchKubeOpts.namespace,
 				PodName:       benchKubeOpts.pod,
 				ContainerName: benchKubeOpts.container,
+				Interactive:   cf.BenchInteractive,
 			},
 		)
 	case join.FullCommand():

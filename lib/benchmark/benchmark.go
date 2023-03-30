@@ -30,7 +30,6 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/gravitational/trace"
 	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/rest"
 
 	"github.com/gravitational/teleport/lib/client"
 	"github.com/gravitational/teleport/lib/observability/tracing"
@@ -155,8 +154,15 @@ func ExportLatencyProfile(path string, h *hdrhistogram.Histogram, ticks int32, v
 	return fo.Name(), nil
 }
 
-// workloadFunc is a function that executes a single benchmark call.
-type workloadFunc func(context.Context, benchMeasure) error
+// WorkloadFunc is a function that executes a single benchmark call.
+type WorkloadFunc func(context.Context) error
+
+// BenchmarkSuite is an interface that defines a benchmark suite.
+type BenchmarkSuite interface {
+	// BenchBuilder returns a function that executes a single benchmark call.
+	// The returned function is called in a loop until the context is canceled.
+	BenchBuilder(context.Context, *client.TeleportClient) (WorkloadFunc, error)
+}
 
 // Benchmark connects to remote server and executes requests in parallel according
 // to benchmark spec. It returns benchmark result when completed.
@@ -166,7 +172,7 @@ func (c *Config) Benchmark(ctx context.Context, tc *client.TeleportClient, suite
 		return Result{}, trace.BadParameter("missing benchmark suite")
 	}
 
-	workload, err := suite.workload(ctx, tc)
+	workload, err := suite.BenchBuilder(ctx, tc)
 	if err != nil {
 		return Result{}, trace.Wrap(err)
 	}
@@ -241,69 +247,14 @@ type benchMeasure struct {
 	Error         error
 }
 
-func work(ctx context.Context, m benchMeasure, send chan<- benchMeasure, workload workloadFunc) {
-	m.Error = workload(ctx, m)
+func work(ctx context.Context, m benchMeasure, send chan<- benchMeasure, workload WorkloadFunc) {
+	m.Error = workload(ctx)
 	m.End = time.Now()
 	select {
 	case send <- m:
 	case <-ctx.Done():
 		return
 	}
-}
-
-// getKubeTLSClientConfig returns a TLS client config for the kubernetes cluster
-// that the client wants to connected to.
-func getKubeTLSClientConfig(ctx context.Context, tc *client.TeleportClient) (rest.TLSClientConfig, error) {
-	var k *client.Key
-	err := client.RetryWithRelogin(ctx, tc, func() error {
-		var err error
-		k, err = tc.IssueUserCertsWithMFA(ctx, client.ReissueParams{
-			RouteToCluster:    tc.SiteName,
-			KubernetesCluster: tc.KubernetesCluster,
-		}, nil /*applyOpts*/)
-		return err
-	})
-	if err != nil {
-		return rest.TLSClientConfig{}, trace.Wrap(err)
-	}
-
-	certPem := k.KubeTLSCerts[tc.KubernetesCluster]
-
-	rsaKeyPEM, err := k.PrivateKey.RSAPrivateKeyPEM()
-	if err != nil {
-		return rest.TLSClientConfig{}, trace.Wrap(err)
-	}
-
-	credentials, err := tc.LocalAgent().GetCoreKey()
-	if err != nil {
-		return rest.TLSClientConfig{}, trace.Wrap(err)
-	}
-
-	var clusterCAs [][]byte
-	if tc.LoadAllCAs {
-		clusterCAs = credentials.TLSCAs()
-	} else {
-		clusterCAs, err = credentials.RootClusterCAs()
-		if err != nil {
-			return rest.TLSClientConfig{}, trace.Wrap(err)
-		}
-	}
-	if len(clusterCAs) == 0 {
-		return rest.TLSClientConfig{}, trace.BadParameter("no trusted CAs found")
-	}
-
-	tlsServerName := ""
-	if tc.TLSRoutingEnabled {
-		k8host, _ := tc.KubeProxyHostPort()
-		tlsServerName = client.GetKubeTLSServerName(k8host)
-	}
-
-	return rest.TLSClientConfig{
-		CAData:     bytes.Join(clusterCAs, []byte("\n")),
-		CertData:   certPem,
-		KeyData:    rsaKeyPEM,
-		ServerName: tlsServerName,
-	}, nil
 }
 
 // makeTeleportClient creates an instance of a teleport client
