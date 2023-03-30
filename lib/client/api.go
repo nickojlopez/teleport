@@ -1457,11 +1457,10 @@ func (tc *TeleportClient) SSH(ctx context.Context, command []string, runLocally 
 }
 
 // ConnectToNode attempts to establish a connection to the node resolved to by the provided
-// NodeDetails. If the connection fails due to an Access Denied error, Auth is queried to
-// determine if per-session MFA is required for the node. If it is required then the MFA
-// ceremony is performed and another connection is attempted with the freshly minted
-// certificates. If it is not required, then the original Access Denied error from the node
-// is returned.
+// NodeDetails. Connecting is attempted both with the already provisioned certificates and
+// if per session mfa is required, after completing the mfa ceremony. In the event that both
+// fail the error from the connection attempt with the already provisioned certificates will
+// be returned. The client from whichever attempt succeeds first will be returned.
 func (tc *TeleportClient) ConnectToNode(ctx context.Context, proxyClient *ProxyClient, nodeDetails NodeDetails, user string) (*NodeClient, error) {
 	node := nodeName(nodeDetails.Addr)
 	ctx, span := tc.Tracer.Start(
@@ -1469,25 +1468,11 @@ func (tc *TeleportClient) ConnectToNode(ctx context.Context, proxyClient *ProxyC
 		"teleportClient/ConnectToNode",
 		oteltrace.WithSpanKind(oteltrace.SpanKindClient),
 		oteltrace.WithAttributes(
-			attribute.String("site", nodeDetails.Cluster),
+			attribute.String("cluster", nodeDetails.Cluster),
 			attribute.String("node", node),
 		),
 	)
 	defer span.End()
-
-	// attempt to use the existing credentials first
-	authMethods := proxyClient.authMethods
-
-	// if per-session mfa is required, perform the mfa ceremony to get
-	// new certificates and use them instead
-	if nodeDetails.MFACheck != nil && nodeDetails.MFACheck.Required {
-		am, err := proxyClient.sessionSSHCertificate(ctx, nodeDetails)
-		if err != nil {
-			return nil, trace.Wrap(err)
-		}
-
-		authMethods = am
-	}
 
 	// grab the cluster details
 	details, err := proxyClient.clusterDetails(ctx)
@@ -1495,40 +1480,104 @@ func (tc *TeleportClient) ConnectToNode(ctx context.Context, proxyClient *ProxyC
 		return nil, trace.Wrap(err)
 	}
 
-	// try connecting to the node
-	nodeClient, connectErr := proxyClient.ConnectToNode(ctx, nodeDetails, user, details, authMethods)
-	switch {
-	case connectErr == nil: // no error return client
-		return nodeClient, nil
-	case nodeDetails.MFACheck != nil: // per-session mfa ceremony was already performed, return the results
-		return nodeClient, trace.Wrap(connectErr)
-	case connectErr != nil && !trace.IsAccessDenied(connectErr): // catastrophic error, return it
-		return nil, trace.Wrap(connectErr)
+	// if per-session mfa is required, perform the mfa ceremony to get
+	// new certificates and use them to connect.
+	if nodeDetails.MFACheck != nil && nodeDetails.MFACheck.Required {
+		clt, err := tc.connectToNodeWithMFA(ctx, proxyClient, nodeDetails, user, details)
+		return clt, trace.Wrap(err)
 	}
+
+	type clientRes struct {
+		clt *NodeClient
+		err error
+	}
+
+	directResultC := make(chan clientRes, 1)
+	mfaResultC := make(chan clientRes, 1)
+
+	// use a child context so the goroutine ends if this
+	// function returns early
+	directCtx, directCancel := context.WithCancel(ctx)
+	defer directCancel()
+	go func() {
+		// try connecting to the node with the certs we already have
+		clt, err := proxyClient.ConnectToNode(directCtx, nodeDetails, user, details, proxyClient.authMethods)
+		directResultC <- clientRes{clt: clt, err: err}
+	}()
+
+	// use a child context so the goroutine ends if this
+	// function returns early
+	mfaCtx, mfaCancel := context.WithCancel(ctx)
+	defer mfaCancel()
+	go func() {
+		// try performing mfa and then connecting with the single use certs
+		clt, err := tc.connectToNodeWithMFA(mfaCtx, proxyClient, nodeDetails, user, details)
+		mfaResultC <- clientRes{clt: clt, err: err}
+	}()
+
+	var connectErr error
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case res := <-directResultC:
+			if res.clt != nil {
+				return res.clt, nil
+			}
+
+			connectErr = res.err
+		case res := <-mfaResultC:
+			if res.clt != nil {
+				return res.clt, nil
+			}
+		}
+	}
+
+	return nil, trace.Wrap(connectErr)
+}
+
+// connectToNodeWithMFA checks if per session mfa is required to connect to the target host, and
+// if it is required, then the mfa ceremony is attempted. The target host is dialed once the ceremony
+// completes and new certificates are retrieved.
+func (tc *TeleportClient) connectToNodeWithMFA(ctx context.Context, proxyClient *ProxyClient, nodeDetails NodeDetails, user string, details sshutils.ClusterDetails) (*NodeClient, error) {
+	node := nodeName(nodeDetails.Addr)
+	ctx, span := tc.Tracer.Start(
+		ctx,
+		"teleportClient/connectToNodeWithMFA",
+		oteltrace.WithSpanKind(oteltrace.SpanKindClient),
+		oteltrace.WithAttributes(
+			attribute.String("cluster", nodeDetails.Cluster),
+			attribute.String("node", node),
+		),
+	)
+	defer span.End()
 
 	// access was denied, determine if it was because per-session mfa is required
 	clt, err := proxyClient.ConnectToCluster(ctx, nodeDetails.Cluster)
 	if err != nil {
 		// return the connection error instead of any errors from connecting to auth
-		return nil, trace.Wrap(connectErr)
+		return nil, trace.Wrap(err)
 	}
 
-	check, err := clt.IsMFARequired(ctx, &proto.IsMFARequiredRequest{
-		Target: &proto.IsMFARequiredRequest_Node{
-			Node: &proto.NodeLogin{
-				Node:  node,
-				Login: proxyClient.hostLogin,
+	if nodeDetails.MFACheck == nil {
+		check, err := clt.IsMFARequired(ctx, &proto.IsMFARequiredRequest{
+			Target: &proto.IsMFARequiredRequest_Node{
+				Node: &proto.NodeLogin{
+					Node:  node,
+					Login: proxyClient.hostLogin,
+				},
 			},
-		},
-	})
-	if err != nil {
-		return nil, trace.Wrap(connectErr)
+		})
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		nodeDetails.MFACheck = check
 	}
 
 	// per-session mfa isn't required, the user simply does not
 	// have access to the provided node
-	if !check.Required {
-		return nil, trace.Wrap(connectErr)
+	if !nodeDetails.MFACheck.Required {
+		return nil, trace.Wrap(err)
 	}
 
 	// per-session mfa is required, perform the mfa ceremony
@@ -1537,7 +1586,7 @@ func (tc *TeleportClient) ConnectToNode(ctx context.Context, proxyClient *ProxyC
 		ReissueParams{
 			NodeName:       node,
 			RouteToCluster: nodeDetails.Cluster,
-			MFACheck:       check,
+			MFACheck:       nodeDetails.MFACheck,
 			AuthClient:     clt,
 		},
 		func(ctx context.Context, proxyAddr string, c *proto.MFAAuthenticateChallenge) (*proto.MFAAuthenticateResponse, error) {
@@ -1554,7 +1603,7 @@ func (tc *TeleportClient) ConnectToNode(ctx context.Context, proxyClient *ProxyC
 		return nil, trace.Wrap(err)
 	}
 
-	nodeClient, err = proxyClient.ConnectToNode(ctx, nodeDetails, user, details, []ssh.AuthMethod{newAuthMethods})
+	nodeClient, err := proxyClient.ConnectToNode(ctx, nodeDetails, user, details, []ssh.AuthMethod{newAuthMethods})
 	return nodeClient, trace.Wrap(err)
 }
 

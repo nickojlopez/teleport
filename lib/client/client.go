@@ -2020,37 +2020,6 @@ func (c *NodeClient) Close() error {
 	return c.Client.Close()
 }
 
-func (proxy *ProxyClient) sessionSSHCertificate(ctx context.Context, nodeAddr NodeDetails) ([]ssh.AuthMethod, error) {
-	if _, err := proxy.teleportClient.localAgent.GetKey(nodeAddr.Cluster); err != nil {
-		if trace.IsNotFound(err) {
-			// Either running inside the web UI in a proxy or using an identity
-			// file. Fall back to whatever AuthMethod we currently have.
-			return proxy.authMethods, nil
-		}
-		return nil, trace.Wrap(err)
-	}
-
-	key, err := proxy.IssueUserCertsWithMFA(
-		ctx,
-		ReissueParams{
-			NodeName:       nodeName(nodeAddr.Addr),
-			RouteToCluster: proxy.ClusterName(),
-			MFACheck:       nodeAddr.MFACheck,
-		},
-		func(ctx context.Context, proxyAddr string, c *proto.MFAAuthenticateChallenge) (*proto.MFAAuthenticateResponse, error) {
-			return proxy.teleportClient.PromptMFAChallenge(ctx, proxyAddr, c, nil /* applyOpts */)
-		},
-	)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	am, err := key.AsAuthMethod()
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return []ssh.AuthMethod{am}, nil
-}
-
 // localAgent returns for the Teleport client's local agent.
 func (proxy *ProxyClient) localAgent() *LocalKeyAgent {
 	return proxy.teleportClient.LocalAgent()
