@@ -91,9 +91,9 @@ export function SearchBar() {
     if (s.filter === 'resource-type') {
       return (
         <ButtonPrimary
-          m="4px"
-          mr="2px"
-          px="8px"
+          m={1}
+          mr={0}
+          px={2}
           size="small"
           key="resource-type"
           onClick={() => removeSearchFilter(s)}
@@ -108,9 +108,9 @@ export function SearchBar() {
         routing.parseClusterName(s.clusterUri);
       return (
         <ButtonPrimary
-          m="4px"
-          mr="2px"
-          px="8px"
+          m={1}
+          mr={0}
+          px={2}
           size="small"
           title={clusterName}
           css={`
