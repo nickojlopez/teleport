@@ -27,39 +27,7 @@ import (
 	"github.com/gravitational/teleport/lib/utils"
 )
 
-// Resource is a wrapper around devicepb.Device that implements types.Resource.
-type Resource struct {
-	// ResourceHeader is embedded to implement types.Resource.
-	types.ResourceHeader
-	// Spec is the device specification.
-	Spec ResourceSpec `json:"spec"`
-}
-
-// ResourceSpec is the device resource specification.
-// This spec is intended to closely mirror [devicepb.Device] but swaps some data around
-// to get a UX that matches with our other resource types.
-type ResourceSpec struct {
-	// OSType is represented as a string here for user-friendly manipulation.
-	OSType      string                      `json:"os_type"`
-	AssetTag    string                      `json:"asset_tag"`
-	CreateTime  time.Time                   `json:"create_time,omitempty"`
-	UpdateTime  time.Time                   `json:"update_time,omitempty"`
-	EnrollToken *devicepb.DeviceEnrollToken `json:"enroll_token,omitempty"`
-	// EnrollStatus is represented as a string here for user-friendly manipulation.
-	EnrollStatus  string                     `json:"enroll_status"`
-	Credential    *devicepb.DeviceCredential `json:"credential,omitempty"`
-	CollectedData []CollectedData            `json:"collected_data,omitempty"`
-}
-
-// CollectedData mirrors [devicepb.DeviceCollectedData] but with a different
-// timestamp type to achieve consistent serialization output.
-type CollectedData struct {
-	CollectTime time.Time `json:"collect_time"`
-	RecordTime  time.Time `json:"record_time"`
-	// OSType is represented as a string here for user-friendly manipulation.
-	OSType       string `json:"os_type"`
-	SerialNumber string `json:"serial_number,omitempty"`
-}
+type Resource types.DeviceV1
 
 // checkAndSetDefaults sanity checks Resource fields to catch simple errors, and
 // sets default values for all fields with defaults.
@@ -88,14 +56,14 @@ func (r *Resource) checkAndSetDefaults() error {
 	switch {
 	case r.Kind != types.KindDevice: // Sanity check.
 		return trace.BadParameter("unexpected resource kind %q, must be %q", r.Kind, types.KindDevice)
-	case r.Spec.OSType == "":
+	case r.Spec.OsType == "":
 		return trace.BadParameter("missing OS type")
 	case r.Spec.AssetTag == "":
 		return trace.BadParameter("missing asset tag")
 	}
 
 	// Validate enum conversions.
-	if _, err := devicetrust.ResourceOSTypeFromString(r.Spec.OSType); err != nil {
+	if _, err := devicetrust.ResourceOSTypeFromString(r.Spec.OsType); err != nil {
 		return trace.Wrap(err)
 	}
 	if _, err := devicetrust.ResourceEnrollStatusFromString(r.Spec.EnrollStatus); err != nil {
@@ -122,48 +90,62 @@ func UnmarshalDevice(raw []byte) (*devicepb.Device, error) {
 // ProtoToResource converts a *devicepb.Device into a *Resource which
 // implements types.Resource and can be marshaled to YAML or JSON in a
 // human-friendly format.
-func ProtoToResource(device *devicepb.Device) *Resource {
-	collectedData := make([]CollectedData, 0, len(device.CollectedData))
-	for _, d := range device.CollectedData {
-		collectedData = append(collectedData, CollectedData{
-			CollectTime:  d.CollectTime.AsTime(),
-			RecordTime:   d.RecordTime.AsTime(),
-			OSType:       devicetrust.ResourceOSTypeToString(d.OsType),
-			SerialNumber: d.SerialNumber,
-		})
+func ProtoToResource(dev *devicepb.Device) *Resource {
+	toTimePtr := func(pb *timestamppb.Timestamp) *time.Time {
+		if pb == nil {
+			return nil
+		}
+		t := pb.AsTime()
+		return &t
 	}
 
-	r := &Resource{
+	var cred *types.DeviceCredential
+	if dev.Credential != nil {
+		cred = &types.DeviceCredential{
+			Id:           dev.Credential.Id,
+			PublicKeyDer: dev.Credential.PublicKeyDer,
+		}
+	}
+
+	collectedData := make([]*types.DeviceCollectedData, len(dev.CollectedData))
+	for i, d := range dev.CollectedData {
+		collectedData[i] = &types.DeviceCollectedData{
+			CollectTime:  toTimePtr(d.CollectTime),
+			RecordTime:   toTimePtr(d.RecordTime),
+			OsType:       devicetrust.ResourceOSTypeToString(d.OsType),
+			SerialNumber: d.SerialNumber,
+		}
+	}
+
+	return &Resource{
 		ResourceHeader: types.ResourceHeader{
 			Kind:    types.KindDevice,
-			Version: device.ApiVersion,
+			Version: dev.ApiVersion,
 			Metadata: types.Metadata{
-				Name: device.Id,
+				Name: dev.Id,
 			},
 		},
-		Spec: ResourceSpec{
-			OSType:        devicetrust.ResourceOSTypeToString(device.OsType),
-			AssetTag:      device.AssetTag,
-			EnrollToken:   device.EnrollToken,
-			EnrollStatus:  devicetrust.ResourceEnrollStatusToString(device.EnrollStatus),
-			Credential:    device.Credential,
+		Spec: &types.DeviceSpec{
+			OsType:        devicetrust.ResourceOSTypeToString(dev.OsType),
+			AssetTag:      dev.AssetTag,
+			CreateTime:    toTimePtr(dev.CreateTime),
+			UpdateTime:    toTimePtr(dev.UpdateTime),
+			EnrollStatus:  devicetrust.ResourceEnrollStatusToString(dev.EnrollStatus),
+			Credential:    cred,
 			CollectedData: collectedData,
 		},
 	}
-
-	if device.CreateTime != nil {
-		r.Spec.CreateTime = device.CreateTime.AsTime()
-	}
-
-	if device.UpdateTime != nil {
-		r.Spec.UpdateTime = device.UpdateTime.AsTime()
-	}
-
-	return r
 }
 
 func resourceToProto(r *Resource) (*devicepb.Device, error) {
-	osType, err := devicetrust.ResourceOSTypeFromString(r.Spec.OSType)
+	toTimePB := func(t *time.Time) *timestamppb.Timestamp {
+		if t == nil {
+			return nil
+		}
+		return timestamppb.New(*t)
+	}
+
+	osType, err := devicetrust.ResourceOSTypeFromString(r.Spec.OsType)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -173,39 +155,38 @@ func resourceToProto(r *Resource) (*devicepb.Device, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	collectedData := make([]*devicepb.DeviceCollectedData, 0, len(r.Spec.CollectedData))
-	for _, d := range r.Spec.CollectedData {
-		dataOSType, err := devicetrust.ResourceOSTypeFromString(d.OSType)
+	var cred *devicepb.DeviceCredential
+	if r.Spec.Credential != nil {
+		cred = &devicepb.DeviceCredential{
+			Id:           r.Spec.Credential.Id,
+			PublicKeyDer: r.Spec.Credential.PublicKeyDer,
+		}
+	}
+
+	collectedData := make([]*devicepb.DeviceCollectedData, len(r.Spec.CollectedData))
+	for i, d := range r.Spec.CollectedData {
+		dataOSType, err := devicetrust.ResourceOSTypeFromString(d.OsType)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
 
-		collectedData = append(collectedData, &devicepb.DeviceCollectedData{
-			CollectTime:  timestamppb.New(d.CollectTime),
-			RecordTime:   timestamppb.New(d.RecordTime),
+		collectedData[i] = &devicepb.DeviceCollectedData{
+			CollectTime:  toTimePB(d.CollectTime),
+			RecordTime:   toTimePB(d.RecordTime),
 			OsType:       dataOSType,
 			SerialNumber: d.SerialNumber,
-		})
+		}
 	}
 
-	dev := &devicepb.Device{
+	return &devicepb.Device{
 		ApiVersion:    r.Version,
 		Id:            r.Metadata.Name,
 		OsType:        osType,
 		AssetTag:      r.Spec.AssetTag,
-		EnrollToken:   r.Spec.EnrollToken,
+		CreateTime:    toTimePB(r.Spec.CreateTime),
+		UpdateTime:    toTimePB(r.Spec.UpdateTime),
 		EnrollStatus:  enrollStatus,
-		Credential:    r.Spec.Credential,
+		Credential:    cred,
 		CollectedData: collectedData,
-	}
-
-	if !r.Spec.CreateTime.IsZero() {
-		dev.CreateTime = timestamppb.New(r.Spec.CreateTime)
-	}
-
-	if !r.Spec.UpdateTime.IsZero() {
-		dev.UpdateTime = timestamppb.New(r.Spec.UpdateTime)
-	}
-
-	return dev, nil
+	}, nil
 }
