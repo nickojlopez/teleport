@@ -640,11 +640,11 @@ func (c *Client) UpsertDevice(ctx context.Context, device *devicepb.Device) (*de
 }
 
 // DeleteDevice hard-deletes a deviceby id.
-func (c *Client) DeleteDevice(ctx context.Context, id string) (*emptypb.Empty, error) {
-	device, err := c.DevicesClient().DeleteDevice(ctx, &devicepb.DeleteDeviceRequest{
+func (c *Client) DeleteDevice(ctx context.Context, id string) error {
+	_, err := c.DevicesClient().DeleteDevice(ctx, &devicepb.DeleteDeviceRequest{
 		DeviceId: id,
 	}, c.callOpts...)
-	return device, trail.FromGRPC(err)
+	return trail.FromGRPC(err)
 }
 
 // LoginRuleClient returns an unadorned Login Rule client, using the underlying
