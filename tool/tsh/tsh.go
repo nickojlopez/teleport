@@ -1139,15 +1139,25 @@ func Run(ctx context.Context, args []string, opts ...cliOption) error {
 	case ssh.FullCommand():
 		err = onSSH(&cf)
 	case benchSSH.FullCommand():
-		err = onBenchmark(&cf, benchmark.SSHService, "" /* kubeNamespace */, nil /* podExec */)
+		err = onBenchmark(
+			&cf,
+			&benchmark.SSHBenchmark{
+				Command: cf.RemoteCommand,
+			},
+		)
 	case benchListKube.FullCommand():
-		err = onBenchmark(&cf, benchmark.KubernetesService, benchKubeOpts.namespace, nil /* podExec */)
+		err = onBenchmark(
+			&cf,
+			&benchmark.KubeListBenchmark{
+				Namespace: benchKubeOpts.namespace,
+			},
+		)
 	case benchExecKube.FullCommand():
 		err = onBenchmark(
 			&cf,
-			benchmark.KubernetesService,
-			benchKubeOpts.namespace,
-			&benchmark.PodExecBenchmark{
+			&benchmark.KubeExecBenchmark{
+				Command:       cf.RemoteCommand,
+				Namespace:     benchKubeOpts.namespace,
 				PodName:       benchKubeOpts.pod,
 				ContainerName: benchKubeOpts.container,
 			},
@@ -3109,20 +3119,16 @@ func onSSH(cf *CLIConf) error {
 }
 
 // onBenchmark executes benchmark
-func onBenchmark(cf *CLIConf, service benchmark.Service, kubeNamespace string, exec *benchmark.PodExecBenchmark) error {
+func onBenchmark(cf *CLIConf, suite benchmark.BenchmarkSuite) error {
 	tc, err := makeClient(cf, false)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 	cnf := benchmark.Config{
-		Command:          cf.RemoteCommand,
-		MinimumWindow:    cf.BenchDuration,
-		Rate:             cf.BenchRate,
-		Service:          service,
-		PodNamespace:     kubeNamespace,
-		PodExecBenchmark: exec,
+		MinimumWindow: cf.BenchDuration,
+		Rate:          cf.BenchRate,
 	}
-	result, err := cnf.Benchmark(cf.Context, tc)
+	result, err := cnf.Benchmark(cf.Context, tc, suite)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, utils.UserMessageFromError(err))
 		return trace.Wrap(&common.ExitCodeError{Code: 255})
