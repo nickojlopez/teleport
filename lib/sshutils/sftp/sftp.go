@@ -47,6 +47,8 @@ type Options struct {
 	// PreserveAttrs preserves access and modification times
 	// from the original file
 	PreserveAttrs bool
+	// Force allows overwriting existing files that may be read only
+	Force bool
 }
 
 type homeDirRetriever func() (string, error)
@@ -82,6 +84,8 @@ type FileSystem interface {
 	Open(ctx context.Context, path string) (fs.File, error)
 	// Create creates a new file
 	Create(ctx context.Context, path string, mode os.FileMode) (io.WriteCloser, error)
+	// Remove deletes a file
+	Remove(ctx context.Context, path string) error
 	// Mkdir creates a directory
 	Mkdir(ctx context.Context, path string, mode os.FileMode) error
 	// Chmod sets file permissions
@@ -384,7 +388,17 @@ func (c *Config) transferFile(ctx context.Context, dstPath, srcPath string, srcF
 
 	dstFile, err := c.dstFS.Create(ctx, dstPath, srcFileInfo.Mode())
 	if err != nil {
-		return trace.Errorf("error creating %s file %q: %w", c.dstFS.Type(), dstPath, err)
+		if trace.IsAccessDenied(err) && c.opts.Force {
+			if err := c.dstFS.Remove(ctx, dstPath); err != nil {
+				return trace.Wrap(err)
+			}
+			dstFile, err = c.dstFS.Create(ctx, dstPath, srcFileInfo.Mode())
+			if err != nil {
+				return trace.Wrap(err)
+			}
+		} else {
+			return trace.Errorf("error creating %s file %q: %w", c.dstFS.Type(), dstPath, err)
+		}
 	}
 	defer dstFile.Close()
 

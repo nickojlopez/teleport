@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -44,12 +45,15 @@ func TestUpload(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		srcPaths    []string
-		dstPath     string
-		opts        Options
-		files       []string
-		expectedErr string
+		name                 string
+		srcPaths             []string
+		dstPath              string
+		opts                 Options
+		files                []string
+		expectedErr          string
+		expectedOverwriteErr string
+		fileperms            map[string]fs.FileMode
+		tryOverwrite         bool
 	}{
 		{
 			name: "one file",
@@ -170,6 +174,41 @@ func TestUpload(t *testing.T) {
 			},
 			expectedErr: `"%s/src" is a directory, but the recursive option was not passed`,
 		},
+		{
+			name: "overwriting dst read only file fails without force enabled",
+			srcPaths: []string{
+				"src-file",
+			},
+			dstPath: "dst-file",
+			files: []string{
+				"src-file",
+			},
+			fileperms: map[string]fs.FileMode{
+				"src-file": 0o440,
+			},
+			tryOverwrite: true,
+			opts: Options{
+				Force: false,
+			},
+			expectedOverwriteErr: "permission denied",
+		},
+		{
+			name: "overwriting dst read only file succeeds with force enabled",
+			srcPaths: []string{
+				"src-file",
+			},
+			dstPath: "dst-file",
+			files: []string{
+				"src-file",
+			},
+			fileperms: map[string]fs.FileMode{
+				"src-file": 0o440,
+			},
+			tryOverwrite: true,
+			opts: Options{
+				Force: true,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -181,7 +220,11 @@ func TestUpload(t *testing.T) {
 				if strings.HasSuffix(file, string(filepath.Separator)) {
 					createDir(t, tempDir, file)
 				} else {
-					createFile(t, tempDir, file)
+					perms, ok := tt.fileperms[file]
+					if !ok {
+						perms = 0o644
+					}
+					createFile(t, tempDir, file, perms)
 				}
 			}
 			for i := range tt.srcPaths {
@@ -203,6 +246,16 @@ func TestUpload(t *testing.T) {
 				checkTransfer(t, tt.opts.PreserveAttrs, tt.dstPath, tt.srcPaths...)
 			} else {
 				require.EqualError(t, err, fmt.Sprintf(tt.expectedErr, tempDir))
+			}
+
+			if tt.tryOverwrite {
+				err = cfg.transfer(ctx)
+				if tt.expectedOverwriteErr == "" {
+					require.NoError(t, err)
+					checkTransfer(t, tt.opts.PreserveAttrs, tt.dstPath, tt.srcPaths...)
+				} else {
+					require.ErrorContains(t, err, tt.expectedOverwriteErr)
+				}
 			}
 		})
 	}
@@ -268,7 +321,8 @@ func TestDownload(t *testing.T) {
 				if strings.HasSuffix(file, string(filepath.Separator)) {
 					createDir(t, tempDir, file)
 				} else {
-					createFile(t, tempDir, file)
+
+					createFile(t, tempDir, file, 0o644)
 				}
 			}
 			tt.srcPath = filepath.Join(tempDir, tt.srcPath)
@@ -329,13 +383,13 @@ func TestHomeDirExpansion(t *testing.T) {
 	}
 }
 
-func createFile(t *testing.T, rootDir, path string) {
+func createFile(t *testing.T, rootDir, path string, permissions fs.FileMode) {
 	dir := filepath.Dir(path)
 	if dir != path {
 		createDir(t, rootDir, dir)
 	}
 
-	f, err := os.OpenFile(filepath.Join(rootDir, path), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o664)
+	f, err := os.OpenFile(filepath.Join(rootDir, path), os.O_RDWR|os.O_CREATE|os.O_TRUNC, permissions)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, f.Close())
