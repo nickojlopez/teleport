@@ -259,25 +259,18 @@ function calculateScore(
   let searchResultScore = 0;
 
   const labelMatches = searchResult.labelMatches.map(match => {
-    const { searchTerm } = match;
-    let labelMatchScore = 0;
+    const label = searchResult.resource.labelsList.find(
+      label => label.name === match.labelName
+    );
+    let matchedValue: string;
 
     switch (match.kind) {
       case 'label-name': {
-        const label = searchResult.resource.labelsList.find(
-          label => label.name === match.labelName
-        );
-        const labelMatchScore = getLengthScore(searchTerm, label.name);
-        searchResultScore += labelMatchScore;
+        matchedValue = label.name;
         break;
       }
       case 'label-value': {
-        const label = searchResult.resource.labelsList.find(
-          label => label.name === match.labelName
-        );
-
-        labelMatchScore = getLengthScore(searchTerm, label.value);
-        searchResultScore += labelMatchScore;
+        matchedValue = label.value;
         break;
       }
       default: {
@@ -285,7 +278,10 @@ function calculateScore(
       }
     }
 
-    return { ...match, score: labelMatchScore };
+    const score = getLengthScore(match.searchTerm, matchedValue);
+    searchResultScore += score;
+
+    return { ...match, score };
   });
 
   for (const match of searchResult.resourceMatches) {
