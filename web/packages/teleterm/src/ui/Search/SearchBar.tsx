@@ -140,8 +140,9 @@ export function SearchBar() {
     <Flex
       css={`
         position: relative;
-        min-width: 100px;
-        width: 100%;
+        flex: 4;
+        flex-shrink: 1;
+        min-width: calc(${props => props.theme.space[7]}px * 2);
         height: 100%;
         background: ${props => props.theme.colors.primary.light};
         border: 1px ${props => props.theme.colors.action.disabledBackground}
