@@ -9,13 +9,13 @@ state: draft
 - Product: `@klizhentas || @xinding33`
 - Security: `@reedloden || @jentfoo`
 
-# RFD 84 - Teleport Oracle Access Integration
+# RFD 0115 - Teleport Oracle Access Integration
 
 ## What
 
 
 This RFD outlines the scope of Oracle integration with Teleport Database Access.
-Teleport Database Oracle Access integration with leverage the details about Oracle Protocol shared in Official Oracle GH repository  https://github.com/oracle/python-oracledb/tree/main/src/oracledb/impl released under Apache License, Version 2.0.
+Teleport Database Oracle Access integration will leverage the details about Oracle Protocol shared in Official Oracle GH repository  https://github.com/oracle/python-oracledb/tree/main/src/oracledb/impl released under Apache License, Version 2.0.
 
 ## Why
 
@@ -197,7 +197,7 @@ Additionally, the following server parameters to will be set to enable TLS authe
 #### Create a OracleDB User wth TLS x509 DN Authentication:
 Oracle server allows to authenticate database user based on the certificate CN field:
 
-```azure
+```
 CREATE USER alice IDENTIFIED EXTERNALLY AS 'CN=alice;
 ```
 Ref: [Configuring Authentication Using PKI Certificates for Centrally Managed Users](https://docs.oracle.com/en/database/oracle/oracle-database/19/dbseg/integrating_mads_with_oracle_database.html#GUID-1EF17156-3FA4-4EDD-8DFF-F98EB3A926BF)
