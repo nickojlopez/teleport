@@ -34,21 +34,13 @@ export interface SearchContext {
   opened: boolean;
   searchFilters: SearchFilter[];
   activePicker: SearchPicker;
-
   onInputValueChange(value: string): void;
-
   changeActivePicker(picker: SearchPicker): void;
-
   close(): void;
-
   closeAndResetInput(): void;
-
   open(): void;
-
   resetInput(): void;
-
   setSearchFilter(filter: SearchFilter): void;
-
   removeSearchFilter(filter: SearchFilter): void;
 }
 
@@ -71,6 +63,7 @@ export const SearchContextProvider: FC = props => {
   const [opened, setOpened] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [activePicker, setActivePicker] = useState(actionPicker);
+  // TODO: Choosing data structure for filters.
   const [searchFilters, setSearchFilters] = useState<SearchFilter[]>([]);
 
   function changeActivePicker(picker: SearchPicker): void {
