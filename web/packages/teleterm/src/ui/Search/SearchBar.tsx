@@ -152,14 +152,11 @@ const Input = styled.input(props => {
   };
 });
 
-// TODO: Make the Shortcut cover the placeholder. See how QuickInput Shortcut is implemented where
-// it covers the placeholder.
-// TODO: Center the Shortcut.
-const Shortcut = styled(Box)`
+const Shortcut = styled(Box).attrs({ p: 1 })`
   position: absolute;
-  right: 12px;
-  top: 10px;
-  padding: 2px 3px;
+  right: ${props => props.theme.space[2]}px;
+  top: 50%;
+  transform: translate(0, -50%);
   color: ${({ theme }) => theme.colors.text.secondary};
   background-color: ${({ theme }) => theme.colors.primary.light};
   line-height: 12px;
