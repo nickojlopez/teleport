@@ -83,13 +83,16 @@ export function useSearchAttempts() {
   };
 }
 
-function useDebounce(callback, delay: number) {
+function useDebounce<Args extends unknown[], ReturnValue>(
+  callback: (...args: Args) => ReturnValue,
+  delay: number
+) {
   const callbackRef = useRef(callback);
   useLayoutEffect(() => {
     callbackRef.current = callback;
   });
   return useMemo(
-    () => debounce((...args) => callbackRef.current(...args), delay),
+    () => debounce((...args: Args) => callbackRef.current(...args), delay),
     [delay]
   );
 }
