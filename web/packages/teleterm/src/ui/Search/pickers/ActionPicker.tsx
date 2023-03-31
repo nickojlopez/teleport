@@ -70,7 +70,7 @@ export function ActionPicker(props: { input: ReactElement }) {
 
       return cluster ? cluster.name : uri.routing.parseClusterName(resourceUri);
     },
-    [clustersService]
+    [clustersService, totalCountOfClusters]
   );
 
   const onPick = useCallback(
