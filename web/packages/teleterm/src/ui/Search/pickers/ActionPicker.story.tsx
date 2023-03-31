@@ -27,7 +27,12 @@ export const Items = () => {
   return (
     <div
       css={`
+        position: relative;
         max-width: 600px;
+
+        > * {
+          max-height: unset;
+        }
       `}
     >
       <List />
@@ -38,7 +43,12 @@ export const ItemsNarrow = () => {
   return (
     <div
       css={`
+        position: relative;
         max-width: 300px;
+
+        > * {
+          max-height: unset;
+        }
       `}
     >
       <List />
