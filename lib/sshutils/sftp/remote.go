@@ -83,7 +83,7 @@ func (r *remoteFS) Create(ctx context.Context, path string, mode os.FileMode) (i
 
 	f, err := r.c.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
-		return nil, trace.ConvertSystemError(err)
+		return nil, trace.Wrap(err)
 	}
 
 	return f, nil
@@ -95,7 +95,7 @@ func (r *remoteFS) Remove(ctx context.Context, path string) error {
 	}
 
 	if err := r.c.Remove(path); err != nil {
-		return trace.ConvertSystemError(err)
+		return trace.Wrap(err)
 	}
 	return nil
 }
