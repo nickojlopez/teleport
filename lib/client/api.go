@@ -1559,24 +1559,25 @@ func (tc *TeleportClient) connectToNodeWithMFA(ctx context.Context, proxyClient 
 		return nil, trace.Wrap(err)
 	}
 
-	if nodeDetails.MFACheck == nil {
-		check, err := clt.IsMFARequired(ctx, &proto.IsMFARequiredRequest{
-			Target: &proto.IsMFARequiredRequest_Node{
-				Node: &proto.NodeLogin{
-					Node:  node,
-					Login: proxyClient.hostLogin,
-				},
+	if nodeDetails.MFACheck != nil && !nodeDetails.MFACheck.Required {
+		return nil, trace.AccessDenied("no access to %s", nodeDetails.Addr)
+	}
+
+	check, err := clt.IsMFARequired(ctx, &proto.IsMFARequiredRequest{
+		Target: &proto.IsMFARequiredRequest_Node{
+			Node: &proto.NodeLogin{
+				Node:  node,
+				Login: proxyClient.hostLogin,
 			},
-		})
-		if err != nil {
-			return nil, trace.Wrap(err)
-		}
-		nodeDetails.MFACheck = check
+		},
+	})
+	if err != nil {
+		return nil, trace.Wrap(err)
 	}
 
 	// per-session mfa isn't required, the user simply does not
 	// have access to the provided node
-	if !nodeDetails.MFACheck.Required {
+	if !check.Required {
 		return nil, trace.AccessDenied("no access to %s", nodeDetails.Addr)
 	}
 
@@ -1586,7 +1587,7 @@ func (tc *TeleportClient) connectToNodeWithMFA(ctx context.Context, proxyClient 
 		ReissueParams{
 			NodeName:       node,
 			RouteToCluster: nodeDetails.Cluster,
-			MFACheck:       nodeDetails.MFACheck,
+			MFACheck:       check,
 			AuthClient:     clt,
 		},
 		func(ctx context.Context, proxyAddr string, c *proto.MFAAuthenticateChallenge) (*proto.MFAAuthenticateResponse, error) {
