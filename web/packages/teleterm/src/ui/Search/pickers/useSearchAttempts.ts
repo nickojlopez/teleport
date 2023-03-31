@@ -30,11 +30,7 @@ export function useSearchAttempts() {
   const [filterSearchAttempt, runFilterSearch, setFilterSearchAttempt] =
     useAsync(useFilterSearch());
 
-  const runResourceSearchDebounced = useDebounce(
-    () =>
-      runResourceSearch(searchContext.inputValue, searchContext.searchFilters),
-    200
-  );
+  const runResourceSearchDebounced = useDebounce(runResourceSearch, 200);
 
   ctx.workspacesService.useState();
 
@@ -72,8 +68,9 @@ export function useSearchAttempts() {
 
   useEffect(() => {
     runFilterSearch(inputValue, searchFilters);
+
     if (inputValue) {
-      runResourceSearchDebounced();
+      runResourceSearchDebounced(inputValue, searchFilters);
     }
   }, [searchFilters, inputValue, runFilterSearch, runResourceSearchDebounced]);
 
