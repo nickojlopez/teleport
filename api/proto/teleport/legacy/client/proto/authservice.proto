@@ -2245,8 +2245,30 @@ message UpdateHeadlessAuthenticationStateRequest {
   MFAAuthenticateResponse mfa_response = 3;
 }
 
+message AssistantRequest {
+  string conversation_id = 1;
+}
+
+message AssistantMessage {
+  string conversation_id = 1;
+
+  string type = 2;
+
+  bytes payload = 3;
+}
+
+message GetAssistantMessagesResponse {
+  repeated AssistantMessage messages = 1;
+}
+
 // AuthService is authentication/authorization service implementation
 service AuthService {
+  // GetAssistantMessages
+  rpc GetAssistantMessages(AssistantRequest) returns (GetAssistantMessagesResponse);
+
+  //InsertAssistantMessage
+  rpc InsertAssistantMessage(AssistantMessage) returns (google.protobuf.Empty);
+
   // InventoryControlStream is the per-instance stream used to advertise teleport instance
   // presence/version/etc to the auth server.
   rpc InventoryControlStream(stream UpstreamInventoryOneOf) returns (stream DownstreamInventoryOneOf);

@@ -4887,6 +4887,14 @@ func (a *Server) GetHeadlessAuthentication(ctx context.Context, name string) (*t
 	return headlessAuthn, trace.Wrap(err)
 }
 
+func (a *Server) GetAssistantMessages(ctx context.Context, id string) (*proto.GetAssistantMessagesResponse, error) {
+	return a.Services.GetAssistantMessages(ctx, id)
+}
+
+func (a *Server) InsertAssistantMessage(ctx context.Context, msg *proto.AssistantMessage) error {
+	return trace.Wrap(a.Services.CreateAssistantMessage(ctx, msg))
+}
+
 // CompareAndSwapHeadlessAuthentication performs a compare
 // and swap replacement on a headless authentication resource.
 func (a *Server) CompareAndSwapHeadlessAuthentication(ctx context.Context, old, new *types.HeadlessAuthentication) (*types.HeadlessAuthentication, error) {
@@ -4957,7 +4965,7 @@ func (k *authKeepAliver) Close() error {
 const (
 	// BearerTokenTTL specifies standard bearer token to exist before
 	// it has to be renewed by the client
-	BearerTokenTTL = 10 * time.Minute
+	BearerTokenTTL = 100 * time.Minute
 
 	// TokenLenBytes is len in bytes of the invite token
 	TokenLenBytes = 16
