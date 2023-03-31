@@ -604,13 +604,38 @@ func (c *Client) WithCallOptions(opts ...grpc.CallOption) *Client {
 	return &clt
 }
 
+// connWithOpts adds its gRPC call options to all RPCs, unary and streams.
+type connWithOpts struct {
+	*grpc.ClientConn
+	opts []grpc.CallOption
+}
+
+func (c *connWithOpts) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
+	opts = append(c.opts, opts...)
+	return c.ClientConn.Invoke(ctx, method, args, reply, opts...)
+}
+
+func (c *connWithOpts) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	opts = append(c.opts, opts...)
+	return c.ClientConn.NewStream(ctx, desc, method, opts...)
+}
+
+// connWithOpts returns the underlying grpc.ClientConn with Client.callOpts
+// automatically added to all RPCs.
+func (c *Client) connWithOpts() *connWithOpts {
+	return &connWithOpts{
+		ClientConn: c.conn,
+		opts:       c.callOpts,
+	}
+}
+
 // DevicesClient returns an unadorned Device Trust client, using the underlying
 // Auth gRPC connection.
 // Clients connecting to non-Enterprise clusters, or older Teleport versions,
 // still get a devices client when calling this method, but all RPCs will return
 // "not implemented" errors (as per the default gRPC behavior).
 func (c *Client) DevicesClient() devicepb.DeviceTrustServiceClient {
-	return devicepb.NewDeviceTrustServiceClient(c.conn)
+	return devicepb.NewDeviceTrustServiceClient(c.connWithOpts())
 }
 
 // LoginRuleClient returns an unadorned Login Rule client, using the underlying
@@ -619,7 +644,7 @@ func (c *Client) DevicesClient() devicepb.DeviceTrustServiceClient {
 // still get a login rule client when calling this method, but all RPCs will
 // return "not implemented" errors (as per the default gRPC behavior).
 func (c *Client) LoginRuleClient() loginrulepb.LoginRuleServiceClient {
-	return loginrulepb.NewLoginRuleServiceClient(c.conn)
+	return loginrulepb.NewLoginRuleServiceClient(c.connWithOpts())
 }
 
 // SAMLIdPClient returns an unadorned SAML IdP client, using the underlying
@@ -628,13 +653,13 @@ func (c *Client) LoginRuleClient() loginrulepb.LoginRuleServiceClient {
 // still get a SAML IdP client when calling this method, but all RPCs will
 // return "not implemented" errors (as per the default gRPC behavior).
 func (c *Client) SAMLIdPClient() samlidppb.SAMLIdPServiceClient {
-	return samlidppb.NewSAMLIdPServiceClient(c.conn)
+	return samlidppb.NewSAMLIdPServiceClient(c.connWithOpts())
 }
 
 // TrustClient returns an unadorned Trust client, using the underlying
 // Auth gRPC connection.
 func (c *Client) TrustClient() trustpb.TrustServiceClient {
-	return trustpb.NewTrustServiceClient(c.conn)
+	return trustpb.NewTrustServiceClient(c.connWithOpts())
 }
 
 // Ping gets basic info about the auth server.
@@ -3216,7 +3241,7 @@ func (c *Client) DeleteAllUserGroups(ctx context.Context) error {
 // still get a plugins client when calling this method, but all RPCs will return
 // "not implemented" errors (as per the default gRPC behavior).
 func (c *Client) PluginsClient() pluginspb.PluginServiceClient {
-	return pluginspb.NewPluginServiceClient(c.conn)
+	return pluginspb.NewPluginServiceClient(c.connWithOpts())
 }
 
 // GetLoginRule retrieves a login rule described by name.
