@@ -613,6 +613,40 @@ func (c *Client) DevicesClient() devicepb.DeviceTrustServiceClient {
 	return devicepb.NewDeviceTrustServiceClient(c.conn)
 }
 
+// GetDevice retrieves a device by id.
+func (c *Client) GetDevice(ctx context.Context, id string) (*devicepb.Device, error) {
+	device, err := c.DevicesClient().GetDevice(ctx, &devicepb.GetDeviceRequest{
+		DeviceId: id,
+	}, c.callOpts...)
+	return device, trail.FromGRPC(err)
+}
+
+// CreateDevice creates a device, effectively registering it on Teleport.
+func (c *Client) CreateDevice(ctx context.Context, device *devicepb.Device) (*devicepb.Device, error) {
+	device, err := c.DevicesClient().CreateDevice(ctx, &devicepb.CreateDeviceRequest{
+		Device:            device,
+		CreateEnrollToken: true,
+	}, c.callOpts...)
+	return device, trail.FromGRPC(err)
+}
+
+// UpsertDevice attempts a write of all mutable fields on updates, therefore
+// reading a fresh copy of the device is recommended.
+func (c *Client) UpsertDevice(ctx context.Context, device *devicepb.Device) (*devicepb.Device, error) {
+	device, err := c.DevicesClient().UpsertDevice(ctx, &devicepb.UpsertDeviceRequest{
+		Device: device,
+	}, c.callOpts...)
+	return device, trail.FromGRPC(err)
+}
+
+// DeleteDevice hard-deletes a deviceby id.
+func (c *Client) DeleteDevice(ctx context.Context, id string) error {
+	_, err := c.DevicesClient().DeleteDevice(ctx, &devicepb.DeleteDeviceRequest{
+		DeviceId: id,
+	}, c.callOpts...)
+	return trail.FromGRPC(err)
+}
+
 // LoginRuleClient returns an unadorned Login Rule client, using the underlying
 // Auth gRPC connection.
 // Clients connecting to non-Enterprise clusters, or older Teleport versions,
