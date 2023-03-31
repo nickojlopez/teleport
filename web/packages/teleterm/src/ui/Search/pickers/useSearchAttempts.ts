@@ -15,8 +15,8 @@ export function useSearchAttempts() {
   const searchLogger = useRef(new Logger('search'));
   const ctx = useAppContext();
   const searchContext = useSearchContext();
-
   const { inputValue, searchFilters } = searchContext;
+  const [prevInputValue, setPrevInputValue] = useState<string>(inputValue);
   const debouncedInputValue = useDebounce(inputValue, 200);
 
   const [resourceSearchAttempt, runResourceSearch, setResourceSearchAttempt] =
@@ -29,7 +29,7 @@ export function useSearchAttempts() {
   const resetAttempts = useCallback(() => {
     setResourceSearchAttempt(makeEmptyAttempt());
     setFilterSearchAttempt(makeEmptyAttempt());
-  }, []);
+  }, [setResourceSearchAttempt, setFilterSearchAttempt]);
 
   const resourceActionsAttempt = useMemo(
     () =>
@@ -51,11 +51,15 @@ export function useSearchAttempts() {
     [ctx, filterSearchAttempt, searchContext]
   );
 
-  // Reset the attempt if input gets cleaned. If we did that in useEffect on debouncedInputValue,
-  // then if you typed in something, then cleared the input and started typing something new,
-  // you'd see stale results for a brief second.
-  if (inputValue === '' && resourceActionsAttempt.status !== '') {
-    setResourceSearchAttempt(makeEmptyAttempt());
+  if (inputValue !== prevInputValue) {
+    // Reset both attempts as soon as the input changes. If we didn't do that, then the resource
+    // search attempt would only get updated on debounce. This could lead to the following scenario:
+    //
+    // 1. You type in `foo`, wait for the results to show up.
+    // 2. You clear the input and quickly type in `bar`.
+    // 3. Now you see the stale results for `foo`, because the debounce didn't kick in yet.
+    setPrevInputValue(inputValue);
+    resetAttempts();
   }
 
   useEffect(() => {
@@ -64,6 +68,13 @@ export function useSearchAttempts() {
     }
   }, [debouncedInputValue, runResourceSearch, searchFilters]);
 
+  // TODO(ravicious): Run this as soon as the input value changes, not within a useEffect.
+  // If you consider moving runFilterSearch within the same conditional as setPrevInputValue and
+  // resetAttempts, then you might need to change the initial prevInputValue to be null instead of
+  // ''. Otherwise runFilterSearch won't run on the initial render.
+  //
+  // But perhaps there's a way to have it only on input value change and then run it once on render?
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
   useEffect(() => {
     runFilterSearch(inputValue, searchFilters);
   }, [searchFilters, inputValue, runFilterSearch]);
