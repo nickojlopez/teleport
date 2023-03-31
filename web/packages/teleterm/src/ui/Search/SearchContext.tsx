@@ -24,7 +24,7 @@ import React, {
   MutableRefObject,
 } from 'react';
 
-import { ClusterUri } from 'teleterm/ui/uri';
+import { SearchFilter } from 'teleterm/ui/Search/searchResult';
 
 import { actionPicker, SearchPicker } from './pickers/pickers';
 
@@ -43,18 +43,6 @@ export interface SearchContext {
   setSearchFilter(filter: SearchFilter): void;
   removeSearchFilter(filter: SearchFilter): void;
 }
-
-export interface ResourceTypeSearchFilter {
-  filter: 'resource-type';
-  resourceType: 'kubes' | 'servers' | 'databases';
-}
-
-export interface ClusterSearchFilter {
-  filter: 'cluster';
-  clusterUri: ClusterUri;
-}
-
-export type SearchFilter = ResourceTypeSearchFilter | ClusterSearchFilter;
 
 const SearchContext = createContext<SearchContext>(null);
 

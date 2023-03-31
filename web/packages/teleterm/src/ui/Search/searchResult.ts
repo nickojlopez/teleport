@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import type { ClusterUri } from 'teleterm/ui/uri';
 import type { Cluster } from 'teleterm/services/tshd/types';
 
 import type * as resourcesServiceTypes from 'teleterm/ui/services/resources';
@@ -69,7 +70,7 @@ export type LabelMatch = {
 };
 
 export type ResourceMatch<Kind extends ResourceSearchResult['kind']> = {
-  field: (typeof searchableFields)[Kind][number];
+  field: typeof searchableFields[Kind][number];
   searchTerm: string;
 };
 
@@ -99,3 +100,15 @@ export const searchableFields: {
   database: ['name', 'desc', 'protocol', 'type'],
   kube: ['name'],
 } as const;
+
+export interface ResourceTypeSearchFilter {
+  filter: 'resource-type';
+  resourceType: 'kubes' | 'servers' | 'databases';
+}
+
+export interface ClusterSearchFilter {
+  filter: 'cluster';
+  clusterUri: ClusterUri;
+}
+
+export type SearchFilter = ResourceTypeSearchFilter | ClusterSearchFilter;

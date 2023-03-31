@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ResourceTypeSearchFilter } from 'teleterm/ui/Search/SearchContext';
+import type { ResourceTypeSearchFilter } from 'teleterm/ui/Search/searchResult';
 
 import type * as types from 'teleterm/services/tshd/types';
 import type * as uri from 'teleterm/ui/uri';

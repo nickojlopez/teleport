@@ -23,9 +23,6 @@ import {
   ClusterSearchFilter,
   ResourceTypeSearchFilter,
   SearchFilter,
-} from 'teleterm/ui/Search/SearchContext';
-
-import {
   LabelMatch,
   mainResourceField,
   mainResourceName,
