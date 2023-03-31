@@ -1067,7 +1067,7 @@ type AWSSessionCacheKeyBuilder struct {
 	roleCount int
 }
 
-// NewAWSSessionCacheKeyBuilder constructs a new cache key builder intialized
+// NewAWSSessionCacheKeyBuilder constructs a new cache key builder initialized
 // with a specific AWS region.
 func NewAWSSessionCacheKeyBuilder(region string) AWSSessionCacheKeyBuilder {
 	sb := strings.Builder{}
