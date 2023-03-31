@@ -108,7 +108,7 @@ export function ResultList<T>(props: ResultListProps<T>) {
   }, [items, onPick, onBack, activeItemIndex]);
 
   return (
-    <>
+    <StyledGlobalSearchResults>
       {attempts.some(a => a.status === 'processing') && (
         <div
           style={{
@@ -138,7 +138,7 @@ export function ResultList<T>(props: ResultListProps<T>) {
         );
       })}
       {shouldShowNoResultsCopy && NoResultsComponent}
-    </>
+    </StyledGlobalSearchResults>
   );
 }
 
@@ -180,3 +180,27 @@ function getNext(selectedIndex = 0, max = 0) {
   }
   return index;
 }
+
+const StyledGlobalSearchResults = styled.div(({ theme }) => {
+  return {
+    boxShadow: '8px 8px 18px rgb(0 0 0)',
+    color: theme.colors.primary.contrastText,
+    background: theme.colors.primary.light,
+    boxSizing: 'border-box',
+    // Account for border.
+    width: 'calc(100% + 2px)',
+    // Careful, this is hardcoded based on the input height.
+    marginTop: '38px',
+    display: 'block',
+    position: 'absolute',
+    border: '1px solid ' + theme.colors.action.hover,
+    fontSize: '12px',
+    listStyle: 'none outside none',
+    textShadow: 'none',
+    zIndex: '1000',
+    maxHeight: '350px',
+    overflow: 'auto',
+    // Hardcoded to height of the shortest item.
+    minHeight: '42px',
+  };
+});

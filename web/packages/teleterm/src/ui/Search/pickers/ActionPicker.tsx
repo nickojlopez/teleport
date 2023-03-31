@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import React, { useCallback } from 'react';
+import React, { ReactElement, useCallback } from 'react';
 import styled from 'styled-components';
-import { Box, Flex, Label as DesignLabel, Text } from 'design';
+import { Box, ButtonPrimary, Flex, Label as DesignLabel, Text } from 'design';
 import * as icons from 'design/Icon';
 import { Highlight } from 'shared/components/Highlight';
 
@@ -42,18 +42,25 @@ import { useSearchAttempts } from './useSearchAttempts';
 import { getParameterPicker } from './pickers';
 import { ResultList, EmptyListCopy } from './ResultList';
 
-export function ActionPicker() {
+export function ActionPicker(props: { input: ReactElement }) {
   const ctx = useAppContext();
   const { clustersService } = ctx;
   ctx.clustersService.useState();
 
-  const { changeActivePicker, close, resetInput, closeAndResetInput } =
-    useSearchContext();
+  const {
+    changeActivePicker,
+    close,
+    inputValue,
+    resetInput,
+    closeAndResetInput,
+    searchFilters,
+    removeSearchFilter,
+  } = useSearchContext();
   const { attempts, resetAttempts } = useSearchAttempts();
   const totalCountOfClusters = clustersService.getClusters().length;
 
   const getClusterName = useCallback(
-    (resourceUri: uri.ResourceUri) => {
+    (resourceUri: uri.ClusterOrResourceUri) => {
       if (totalCountOfClusters === 1) {
         return;
       }
@@ -85,32 +92,85 @@ export function ActionPicker() {
     [changeActivePicker, resetAttempts, closeAndResetInput, resetInput]
   );
 
+  const filterButtons = searchFilters.map(s => {
+    if (s.filter === 'resource-type') {
+      return (
+        <ButtonPrimary
+          m={1}
+          mr={0}
+          px={2}
+          size="small"
+          key="resource-type"
+          onClick={() => removeSearchFilter(s)}
+        >
+          {s.resourceType}
+        </ButtonPrimary>
+      );
+    }
+    if (s.filter === 'cluster') {
+      const clusterName = getClusterName(s.clusterUri);
+      return (
+        <ButtonPrimary
+          m={1}
+          mr={0}
+          px={2}
+          size="small"
+          title={clusterName}
+          css={`
+            max-width: 130px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            overflow: hidden;
+            display: block;
+          `}
+          key="cluster"
+          onClick={() => removeSearchFilter(s)}
+        >
+          {clusterName}
+        </ButtonPrimary>
+      );
+    }
+  });
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    const { length } = searchFilters;
+    if (e.key === 'Backspace' && inputValue === '' && length) {
+      removeSearchFilter(searchFilters[length - 1]);
+    }
+  }
+
   return (
-    <ResultList<SearchAction>
-      attempts={attempts}
-      onPick={onPick}
-      onBack={close}
-      render={item => {
-        const Component = ComponentMap[item.searchResult.kind];
-        return {
-          key:
-            item.searchResult.kind !== 'resource-type-filter'
-              ? item.searchResult.resource.uri
-              : item.searchResult.resource,
-          Component: (
-            <Component
-              searchResult={item.searchResult}
-              getClusterName={getClusterName}
-            />
-          ),
-        };
-      }}
-      NoResultsComponent={
-        <EmptyListCopy>
-          <Text>No matching results found.</Text>
-        </EmptyListCopy>
-      }
-    />
+    <>
+      <Flex flex={1} onKeyDown={handleKeyDown}>
+        {filterButtons}
+        {props.input}
+      </Flex>
+      <ResultList<SearchAction>
+        attempts={attempts}
+        onPick={onPick}
+        onBack={close}
+        render={item => {
+          const Component = ComponentMap[item.searchResult.kind];
+          return {
+            key:
+              item.searchResult.kind !== 'resource-type-filter'
+                ? item.searchResult.resource.uri
+                : item.searchResult.resource,
+            Component: (
+              <Component
+                searchResult={item.searchResult}
+                getClusterName={getClusterName}
+              />
+            ),
+          };
+        }}
+        NoResultsComponent={
+          <EmptyListCopy>
+            <Text>No matching results found.</Text>
+          </EmptyListCopy>
+        }
+      />
+    </>
   );
 }
 

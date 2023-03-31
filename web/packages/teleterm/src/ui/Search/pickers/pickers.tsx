@@ -22,19 +22,23 @@ import { ActionPicker } from './ActionPicker';
 import { ParameterPicker } from './ParameterPicker';
 
 export const actionPicker: SearchPicker = {
-  picker: <ActionPicker />,
+  picker: props => <ActionPicker input={props.input} />,
   placeholder: 'Search for resources by name and labels across clusters',
 };
 export const getParameterPicker = (
   parametrizedAction: ParametrizedAction
 ): SearchPicker => {
   return {
-    picker: <ParameterPicker action={parametrizedAction} />,
+    picker: props => (
+      <ParameterPicker input={props.input} action={parametrizedAction} />
+    ),
     placeholder: parametrizedAction.parameter.placeholder,
   };
 };
 
 export interface SearchPicker {
-  picker: React.ReactElement;
+  picker: React.ComponentType<{
+    input: React.ReactElement;
+  }>;
   placeholder: string;
 }

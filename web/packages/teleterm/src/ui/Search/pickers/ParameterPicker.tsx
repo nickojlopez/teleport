@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import React, { useCallback, useEffect } from 'react';
+import React, { ReactElement, useCallback, useEffect } from 'react';
 import { Highlight } from 'shared/components/Highlight';
 import {
   makeSuccessAttempt,
@@ -30,6 +30,7 @@ import { actionPicker } from './pickers';
 
 interface ParameterPickerProps {
   action: ParametrizedAction;
+  input: ReactElement;
 }
 
 export function ParameterPicker(props: ParameterPickerProps) {
@@ -69,14 +70,19 @@ export function ParameterPicker(props: ParameterPickerProps) {
   }, [changeActivePicker]);
 
   return (
-    <ResultList<string>
-      attempts={[inputSuggestionAttempt, attempt]}
-      onPick={onPick}
-      onBack={onBack}
-      render={item => ({
-        key: item,
-        Component: <Highlight text={item} keywords={[inputValue]}></Highlight>,
-      })}
-    />
+    <>
+      {props.input}
+      <ResultList<string>
+        attempts={[inputSuggestionAttempt, attempt]}
+        onPick={onPick}
+        onBack={onBack}
+        render={item => ({
+          key: item,
+          Component: (
+            <Highlight text={item} keywords={[inputValue]}></Highlight>
+          ),
+        })}
+      />
+    </>
   );
 }

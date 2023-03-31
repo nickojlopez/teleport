@@ -16,7 +16,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import styled from 'styled-components';
-import { Box, ButtonPrimary, Flex } from 'design';
+import { Box, Flex } from 'design';
 import { space, width, color, height } from 'styled-system';
 
 import {
@@ -28,11 +28,8 @@ import {
   useKeyboardShortcutFormatters,
   useKeyboardShortcuts,
 } from 'teleterm/ui/services/keyboardShortcuts';
-import { routing } from 'teleterm/ui/uri';
 
 import { useAppContext } from '../appContextProvider';
-
-import { actionPicker } from './pickers/pickers';
 
 const OPEN_COMMAND_BAR_SHORTCUT_ACTION: KeyboardShortcutAction =
   'openCommandBar';
@@ -46,7 +43,6 @@ export function SearchBarConnected() {
 }
 
 export function SearchBar() {
-  const listRef = useRef<HTMLElement>();
   const containerRef = useRef<HTMLElement>();
   const { getAccelerator } = useKeyboardShortcutFormatters();
   const {
@@ -57,8 +53,6 @@ export function SearchBar() {
     opened,
     open,
     close,
-    searchFilters,
-    removeSearchFilter,
   } = useSearchContext();
   const ctx = useAppContext();
   ctx.clustersService.useState();
@@ -86,55 +80,15 @@ export function SearchBar() {
     }
   }
 
-  // TODO(gzdunek): this will be probably moved to `ActionPicker` (altogether with `Input`)
-  const filterButtons = searchFilters.map(s => {
-    if (s.filter === 'resource-type') {
-      return (
-        <ButtonPrimary
-          m={1}
-          mr={0}
-          px={2}
-          size="small"
-          key="resource-type"
-          onClick={() => removeSearchFilter(s)}
-        >
-          {s.resourceType}
-        </ButtonPrimary>
-      );
-    }
-    if (s.filter === 'cluster') {
-      const clusterName =
-        ctx.clustersService.findCluster(s.clusterUri)?.name ||
-        routing.parseClusterName(s.clusterUri);
-      return (
-        <ButtonPrimary
-          m={1}
-          mr={0}
-          px={2}
-          size="small"
-          title={clusterName}
-          css={`
-            max-width: 130px;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            overflow: hidden;
-            display: block;
-          `}
-          key="cluster"
-          onClick={() => removeSearchFilter(s)}
-        >
-          {clusterName}
-        </ButtonPrimary>
-      );
-    }
-  });
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    const { length } = searchFilters;
-    if (e.key === 'Backspace' && inputValue === '' && length) {
-      removeSearchFilter(searchFilters[length - 1]);
-    }
-  }
+  const defaultInputProps = {
+    ref: inputRef,
+    placeholder: activePicker.placeholder,
+    value: inputValue,
+    onChange: e => {
+      onInputValueChange(e.target.value);
+    },
+    spellCheck: false,
+  };
 
   return (
     <Flex
@@ -152,24 +106,19 @@ export function SearchBar() {
       ref={containerRef}
       onFocus={handleOnFocus}
     >
-      {opened && activePicker === actionPicker && <Flex>{filterButtons}</Flex>}
-      <Input
-        ref={inputRef}
-        placeholder={activePicker.placeholder}
-        value={inputValue}
-        onKeyDown={handleKeyDown}
-        onChange={e => {
-          onInputValueChange(e.target.value);
-        }}
-        spellCheck={false}
-      />
       {!opened && (
-        <Shortcut>{getAccelerator(OPEN_COMMAND_BAR_SHORTCUT_ACTION)}</Shortcut>
+        <>
+          <Input {...defaultInputProps} />
+          <Shortcut>
+            {getAccelerator(OPEN_COMMAND_BAR_SHORTCUT_ACTION)}
+          </Shortcut>
+        </>
       )}
       {opened && (
-        <StyledGlobalSearchResults ref={listRef}>
-          {activePicker.picker}
-        </StyledGlobalSearchResults>
+        <activePicker.picker
+          // autofocusing cannot be done in `open` function as it would focus the input from closed state
+          input={<Input {...defaultInputProps} autoFocus={true} />}
+        />
       )}
     </Flex>
   );
@@ -217,27 +166,3 @@ const Shortcut = styled(Box)`
   font-size: 12px;
   border-radius: 2px;
 `;
-
-const StyledGlobalSearchResults = styled.div(({ theme }) => {
-  return {
-    boxShadow: '8px 8px 18px rgb(0 0 0)',
-    color: theme.colors.primary.contrastText,
-    background: theme.colors.primary.light,
-    boxSizing: 'border-box',
-    // Account for border.
-    width: 'calc(100% + 2px)',
-    // Careful, this is hardcoded based on the input height.
-    marginTop: '38px',
-    display: 'block',
-    position: 'absolute',
-    border: '1px solid ' + theme.colors.action.hover,
-    fontSize: '12px',
-    listStyle: 'none outside none',
-    textShadow: 'none',
-    zIndex: '1000',
-    maxHeight: '350px',
-    overflow: 'auto',
-    // Hardcoded to height of the shortest item.
-    minHeight: '42px',
-  };
-});
