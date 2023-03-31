@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { makeEmptyAttempt, mapAttempt, useAsync } from 'shared/hooks/useAsync';
+
+import { debounce } from 'shared/utils/highbar';
 
 import {
   sortResults,
@@ -15,14 +23,18 @@ export function useSearchAttempts() {
   const searchLogger = useRef(new Logger('search'));
   const ctx = useAppContext();
   const searchContext = useSearchContext();
-
   const { inputValue, searchFilters } = searchContext;
-  const debouncedInputValue = useDebounce(inputValue, 200);
 
   const [resourceSearchAttempt, runResourceSearch, setResourceSearchAttempt] =
     useAsync(useResourceSearch());
   const [filterSearchAttempt, runFilterSearch, setFilterSearchAttempt] =
     useAsync(useFilterSearch());
+
+  const runResourceSearchDebounced = useDebounce(
+    () =>
+      runResourceSearch(searchContext.inputValue, searchContext.searchFilters),
+    200
+  );
 
   ctx.workspacesService.useState();
 
@@ -59,14 +71,11 @@ export function useSearchAttempts() {
   }
 
   useEffect(() => {
-    if (debouncedInputValue) {
-      runResourceSearch(debouncedInputValue, searchFilters);
-    }
-  }, [debouncedInputValue, runResourceSearch, searchFilters]);
-
-  useEffect(() => {
     runFilterSearch(inputValue, searchFilters);
-  }, [searchFilters, inputValue, runFilterSearch]);
+    if (inputValue) {
+      runResourceSearchDebounced();
+    }
+  }, [searchFilters, inputValue, runFilterSearch, runResourceSearchDebounced]);
 
   return {
     resetAttempts,
@@ -74,19 +83,13 @@ export function useSearchAttempts() {
   };
 }
 
-function useDebounce<T>(value: T, delay: number): T {
-  // State and setters for debounced value
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(
-    () => {
-      // Update debounced value after delay
-      const handler = setTimeout(() => setDebouncedValue(value), delay);
-      // Cancel the timeout if value changes (also on delay change or unmount)
-      // This is how we prevent debounced value from updating if value is changed ...
-      // .. within the delay period. Timeout gets cleared and restarted.
-      return () => clearTimeout(handler);
-    },
-    [value, delay] // Only re-call effect if value or delay changes
+function useDebounce(callback, delay: number) {
+  const callbackRef = useRef(callback);
+  useLayoutEffect(() => {
+    callbackRef.current = callback;
+  });
+  return useMemo(
+    () => debounce((...args) => callbackRef.current(...args), delay),
+    [delay]
   );
-  return debouncedValue;
 }
