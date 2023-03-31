@@ -47,6 +47,10 @@ export function useResourceSearch() {
 
   return useCallback(
     async (search: string, restrictions: SearchFilter[]) => {
+      if (!search) {
+        return { results: [], search };
+      }
+
       const clusterSearchFilter = restrictions.find(
         s => s.filter === 'cluster'
       ) as ClusterSearchFilter;

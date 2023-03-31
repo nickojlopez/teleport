@@ -56,7 +56,7 @@ export function ActionPicker(props: { input: ReactElement }) {
     searchFilters,
     removeSearchFilter,
   } = useSearchContext();
-  const { attempts, resetAttempts } = useSearchAttempts();
+  const attempts = useSearchAttempts();
   const totalCountOfClusters = clustersService.getClusters().length;
 
   const getClusterName = useCallback(
@@ -75,8 +75,6 @@ export function ActionPicker(props: { input: ReactElement }) {
 
   const onPick = useCallback(
     (action: SearchAction) => {
-      resetAttempts();
-
       if (action.type === 'simple-action') {
         action.perform();
         // TODO: This logic probably should be encapsulated inside SearchContext, so that ActionPicker
@@ -95,7 +93,7 @@ export function ActionPicker(props: { input: ReactElement }) {
         changeActivePicker(getParameterPicker(action));
       }
     },
-    [changeActivePicker, resetAttempts, closeAndResetInput, resetInput]
+    [changeActivePicker, closeAndResetInput, resetInput]
   );
 
   const filterButtons = searchFilters.map(s => {
