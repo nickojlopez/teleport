@@ -1071,7 +1071,7 @@ type AWSSessionCacheKeyBuilder struct {
 // with a specific AWS region.
 func NewAWSSessionCacheKeyBuilder(region string) AWSSessionCacheKeyBuilder {
 	sb := strings.Builder{}
-	_, _ = sb.WriteString(region) // infalliable.
+	_, _ = sb.WriteString(region) // infallible.
 	return AWSSessionCacheKeyBuilder{sb: &sb}
 }
 
