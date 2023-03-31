@@ -935,7 +935,6 @@ func (a *AuthCommand) checkProxyAddr(ctx context.Context, clusterAPI auth.Client
 			&webclient.Config{
 				Context:   ctx,
 				ProxyAddr: addr,
-				Insecure:  true,
 				Timeout:   5 * time.Second,
 			},
 		)
