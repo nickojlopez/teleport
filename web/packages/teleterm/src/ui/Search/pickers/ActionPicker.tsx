@@ -194,10 +194,30 @@ type SearchResultItem<T> = {
   getClusterName: (uri: uri.ResourceUri) => string;
 };
 
+function Item(
+  props: React.PropsWithChildren<{
+    Icon: React.ComponentType<{
+      color: string;
+      fontSize: string;
+      lineHeight: string;
+    }>;
+    iconColor: string;
+  }>
+) {
+  return (
+    <Flex alignItems="flex-start" gap={2}>
+      {/* lineHeight of the icon needs to match the line height of the first row of props.children */}
+      <props.Icon color={props.iconColor} fontSize="20px" lineHeight="24px" />
+      <Flex flexDirection="column" gap={1} minWidth={0} flex="1">
+        {props.children}
+      </Flex>
+    </Flex>
+  );
+}
+
 function ClusterFilterItem(props: SearchResultItem<SearchResultCluster>) {
   return (
-    <Flex alignItems="center" gap={2}>
-      <icons.Lan color="#ff6257" fontSize="20px" />
+    <Item Icon={icons.Lan} iconColor="#ff6257">
       <Text typography="body1">
         Search only in{' '}
         <strong>
@@ -207,7 +227,7 @@ function ClusterFilterItem(props: SearchResultItem<SearchResultCluster>) {
           />
         </strong>
       </Text>
-    </Flex>
+    </Item>
   );
 }
 
@@ -215,8 +235,7 @@ function ResourceTypeFilterItem(
   props: SearchResultItem<SearchResultResourceType>
 ) {
   return (
-    <Flex alignItems="center" gap={2}>
-      <icons.LanAlt color="#f3af3d" fontSize="20px" />
+    <Item Icon={icons.LanAlt} iconColor="#f3af3d">
       <Text typography="body1">
         Search only for{' '}
         <strong>
@@ -226,7 +245,7 @@ function ResourceTypeFilterItem(
           />
         </strong>
       </Text>
-    </Flex>
+    </Item>
   );
 }
 
@@ -238,22 +257,19 @@ export function ServerItem(props: SearchResultItem<SearchResultServer>) {
   );
 
   return (
-    <Flex flexDirection="column" gap={1}>
+    <Item Icon={icons.Server} iconColor="#9685ff">
       <Flex
         justifyContent="space-between"
         alignItems="center"
         flexWrap="wrap"
-        gap={2}
+        gap={1}
       >
-        <Flex alignItems="center" gap={2}>
-          <icons.Server color="#9685ff" fontSize="20px" />
-          <Text typography="body1">
-            Connect over SSH to{' '}
-            <strong>
-              <HighlightField field="hostname" searchResult={searchResult} />
-            </strong>
-          </Text>
-        </Flex>
+        <Text typography="body1">
+          Connect over SSH to{' '}
+          <strong>
+            <HighlightField field="hostname" searchResult={searchResult} />
+          </strong>
+        </Text>
         <Box ml="auto">
           <Text typography="body2" fontSize={0}>
             {props.getClusterName(server.uri)}
@@ -281,7 +297,7 @@ export function ServerItem(props: SearchResultItem<SearchResultServer>) {
           )}
         </ResourceFields>
       </Labels>
-    </Flex>
+    </Item>
   );
 }
 
@@ -315,22 +331,19 @@ export function DatabaseItem(props: SearchResultItem<SearchResultDatabase>) {
   );
 
   return (
-    <Flex flexDirection="column" gap={1}>
+    <Item Icon={icons.Database} iconColor="#00bfa5">
       <Flex
         justifyContent="space-between"
         alignItems="center"
         flexWrap="wrap"
-        gap={2}
+        gap={1}
       >
-        <Flex alignItems="center" gap={2}>
-          <icons.Database color="#00bfa5" fontSize="20px" />
-          <Text typography="body1">
-            Set up a db connection for{' '}
-            <strong>
-              <HighlightField field="name" searchResult={searchResult} />
-            </strong>
-          </Text>
-        </Flex>
+        <Text typography="body1">
+          Set up a db connection for{' '}
+          <strong>
+            <HighlightField field="name" searchResult={searchResult} />
+          </strong>
+        </Text>
         <Box ml="auto">
           <Text typography="body2" fontSize={0}>
             {props.getClusterName(db.uri)}
@@ -349,7 +362,7 @@ export function DatabaseItem(props: SearchResultItem<SearchResultDatabase>) {
       ) : (
         <Labels searchResult={searchResult}>{$resourceFields}</Labels>
       )}
-    </Flex>
+    </Item>
   );
 }
 
@@ -357,22 +370,19 @@ export function KubeItem(props: SearchResultItem<SearchResultKube>) {
   const { searchResult } = props;
 
   return (
-    <Flex flexDirection="column" gap={1}>
+    <Item Icon={icons.Kubernetes} iconColor="#009eff">
       <Flex
         justifyContent="space-between"
         alignItems="center"
         flexWrap="wrap"
-        gap={2}
+        gap={1}
       >
-        <Flex alignItems="center" gap={2}>
-          <icons.Kubernetes color="#009eff" fontSize="20px" />
-          <Text typography="body1">
-            Log in to Kubernetes cluster{' '}
-            <strong>
-              <HighlightField field="name" searchResult={searchResult} />
-            </strong>
-          </Text>
-        </Flex>
+        <Text typography="body1">
+          Log in to Kubernetes cluster{' '}
+          <strong>
+            <HighlightField field="name" searchResult={searchResult} />
+          </strong>
+        </Text>
         <Box ml="auto">
           <Text typography="body2" fontSize={0}>
             {props.getClusterName(searchResult.resource.uri)}
@@ -381,7 +391,7 @@ export function KubeItem(props: SearchResultItem<SearchResultKube>) {
       </Flex>
 
       <Labels searchResult={searchResult} />
-    </Flex>
+    </Item>
   );
 }
 
