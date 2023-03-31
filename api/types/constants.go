@@ -338,6 +338,9 @@ const (
 	// KindHeadlessAuthentication is a headless authentication resource.
 	KindHeadlessAuthentication = "headless_authentication"
 
+	// KindIntegration is a connection to a 3rd party system API.
+	KindIntegration = "integration"
+
 	// V6 is the sixth version of resources.
 	V6 = "v6"
 
@@ -541,6 +544,9 @@ const (
 	// number of proxy servers and enables proxy to proxy communication.
 	ProxyPeering TunnelStrategyType = "proxy_peering"
 )
+
+// IntegrationSubKindType identifies the integration's subkind.
+type IntegrationSubKindType string
 
 const (
 	// ResourceMetadataName refers to a resource metadata field named "name".
