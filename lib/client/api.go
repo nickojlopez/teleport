@@ -1577,7 +1577,7 @@ func (tc *TeleportClient) connectToNodeWithMFA(ctx context.Context, proxyClient 
 	// per-session mfa isn't required, the user simply does not
 	// have access to the provided node
 	if !nodeDetails.MFACheck.Required {
-		return nil, trace.Wrap(err)
+		return nil, trace.AccessDenied("no access to %s", nodeDetails.Addr)
 	}
 
 	// per-session mfa is required, perform the mfa ceremony
